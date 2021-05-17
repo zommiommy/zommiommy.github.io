@@ -18,8 +18,8 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Zommiommy
-email: tommaso.fontana.96@gmail.com
+title: Zom
+#email: 
 description: >- # this means to ignore newlines until "baseurl:"
   I get bored easily
 baseurl: "" # the subpath of your site, e.g. /blog
@@ -28,13 +28,11 @@ twitter_username: zommiommy
 github_username:  zommiommy
 
 # Build settings
-# Build settings
 markdown: kramdown
-theme: jekyll-theme-slate
-# theme: minima
+theme: minima
+# remote_theme: poole/lanyon
 plugins:
   - jekyll-feed
-
 
 # Exclude from processing.
 # The following items will not be processed, by default.
