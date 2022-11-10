@@ -33,7 +33,7 @@ In the last 2 years I focussed on graph data-structures and parallel algorithms 
 ### Hardware
 One of my current side-projects is to write an USB1.1 sniffer using a cheap Raspberry Pico.
 USB1.1 (Full Speed) has a bandwidth of [12MHz](https://support.saleae.com/faq/technical-faq/what-sample-rate-is-required), and we need to sample around [4 times faster than the bandwidth](https://support.saleae.com/faq/technical-faq/what-sample-rate-is-required).
-On a Raspberry Pico, which runs at 125 MHz, we have $$\frac{125\text{MHz}}{12\text{MHz} * 4} \approx 2.6 \frac{\text{Cycles}}{\text{Sample}}$$.
+On a Raspberry Pico, which runs at 125 MHz, we have $$\frac{125\text{MHz}}{4 \cdot 12\text{MHz}} \approx 2.6 \frac{\text{Cycles}}{\text{Sample}}$$.
 I'm trying to achieve this writing a baremetal os in Rust which uses the PIO to sample the data and DMA it directly to the
 USB controller buffers. 
 

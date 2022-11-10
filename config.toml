@@ -24,6 +24,8 @@ favicon = "https://rustacean.net/assets/corro.svg"
 socials = [
     { name = "twitter", url = "https://twitter.com/zommiommy", icon = "twitter" },
     { name = "github", url = "https://github.com/zommiommy", icon = "github" },
+#    { name = "scholar", url = "https://scholar.google.com/citations?hl=en&user=9oTPcNUAAAAJ", icon = "scholar" },
+#    { name = "orcid", url = "https://orcid.org/0000-0002-9806-3493", icon = "orcid" },
 ]
 
 menu = [

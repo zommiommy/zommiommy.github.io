@@ -47,13 +47,6 @@ rustup update
 ### Installing Atheris
 
 ### Creating an harness
-To build a proof of concept we will fuzz our [TFIDF (OKAPI BM 25)](https://en.wikipedia.org/wiki/Okapi_BM25) implementation.
-This function is the one used to pre-compute the weights for our raccomender system
-we implemented as the `__getattr__` magic method of our Graph class.
-
-For our goal of fuzzing it we just need to know that it take a list of documents,
-where a document is a list of the id of the terms contained in each document.
-
 Following the great tutorial on Atheris's Github, I bult a small harness that
 just create random arguments (with the only caveat that I limited the number of documents and the maximum document length to an `u8` to avoid OOM errors).
 
