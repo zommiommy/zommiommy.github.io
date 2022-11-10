@@ -1,0 +1,29 @@
+<header>
+    <div class="main">
+        <a href={{ config.base_url }}>{{ config.title }}</a>
+
+        <div class="socials">
+            {% for social in config.extra.socials %}
+            {% if social.name == "scholar" %}
+            <a href="{{ social.url }}" class="social">
+                <i class="ai ai-google-scholar-square ai-3x"></i>
+            </a>
+            {% elif social.name == "orcid" %}
+            <a href="{{ social.url }}" class="social">
+                <i class="ai ai-orcid ai-4x"></i>
+            </a>
+            {% else %}
+            <a href="{{ social.url }}" class="social">
+                <img alt={{ social.name }} src="/social_icons/{{ social.icon }}.svg">
+            </a>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <nav>
+        {% for menu in config.extra.menu %}
+        <a href={{ menu.url }} style="margin-left: 0.7em">{{ menu.name }}</a>
+        {% endfor %}
+    </nav>
+</header>
