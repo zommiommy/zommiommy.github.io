@@ -1,8 +1,11 @@
 +++
 title = "Good Stuff"
+description = "A quick dump of links to blogs / articles / papers I find interesting in no particular order."
 +++
 
-**Good boys:**
+A quick dump of links to blogs / articles / papers I find interesting in no particular order.
+
+#### Friendz
 [mHackeroni](https://mhackeroni.it/), [babush.me](http://www.babush.me/),
 [abiondo.me](https://abiondo.me/), [andreafioraldi.github.io](https://andreafioraldi.github.io/),
 [jinblack.it](https://jinblack.it/), [rev.ng](https://rev.ng/),
@@ -10,7 +13,7 @@ title = "Good Stuff"
 [blog.antoniofrighetto.com](https://blog.antoniofrighetto.com/), [pietroborrello.github.io](https://pietroborrello.github.io/my-bookshelf/),
 
 
-Awesome blogs and posts in no particular order:
+#### Blogs and posts
 - [Syscall W3 Linux, Windows, OSX Syscall on different archs](https://syscalls.w3challs.com/)
 - [Raph Levien's Blog, and Stack Monoid for parallel regex parsing](https://raphlinus.github.io/gpu/2021/05/13/stack-monoid-revisited.html)
 - [Performance Matters](https://travisdowns.github.io/)
@@ -70,7 +73,8 @@ Awesome blogs and posts in no particular order:
 - [The Layman's Guide to IC Reverse Engineering](http://siliconzoo.org/tutorial.html)
 - [Guitar effects in Rust](https://rickyhan.com/jekyll/update/2018/02/06/rust-guitar-pedal-effects-dsp.html)
 
-Papers / Thesis / Books:
+
+#### Papers / Thesis / Books:
 - [Giulio ermanno Pibiri's thesis on Dynamic Elias-Fano and applications (Graphs)](https://core.ac.uk/download/pdf/79617357.pdf)
 - [Alessio Orlandi's thesis on succint data-structures](http://groups.di.unipi.it/~aorlandi/pdf/orlandi-phd.pdf)
 - [Knuth's on Mathematical Writing](https://www.jmlr.org/reviewing-papers/knuth_mathematical_writing.pdf?utm_medium=referral&utm_source=t.co)
@@ -85,7 +89,7 @@ Papers / Thesis / Books:
 - [Evidence-based recommendations for natural bodybuilding contest preparation: nutrition and supplementation](https://jissn.biomedcentral.com/track/pdf/10.1186/1550-2783-11-20.pdf?site=jissn.biomedcentral.com)
 - [Erik Demaine's Lectures on Advanced Data Structures](https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-851-advanced-data-structures-spring-2012/)
 
-Best games / tv series / anime / songs ever, don't @ me:
+#### don't @ me:
 - [Jet Set Radio Future](https://youtu.be/0dtTGCzgIHw?t=327) A group of skaters that fight the police by doing graffitis, with the music of [@Hideki_Naganuma](https://twitter.com/Hideki_Naganuma)
 - [Touhou Project games, in particular the 7-th (cherry blossom)](https://www.youtube.com/watch?v=a7EmFqLAAww&ab_channel=WorldofLongplays)
 - [BoBoBo-Bo Bo-BoBo](https://www.youtube.com/watch?v=PCC8KYwLvo8&ab_channel=BuzzsawtheRighteous)
@@ -98,11 +102,6 @@ Best games / tv series / anime / songs ever, don't @ me:
 - [Celeste](https://store.steampowered.com/app/504230/Celeste/)
 - [tunak tunak](https://www.youtube.com/watch?v=vTIIMJ9tUc8&ab_channel=SonyMusicIndiaVEVO)
 
-Recipies:
+#### Recipies:
 - [🍊橙意满满超高颜值的巧克力橙子饼干🍪](https://www.xiachufang.com/recipe/105981425/)
 - [羊蝎子火锅](https://www.meishij.net/zuofa/yangxiezihuoguo_7.html)
-
-Favorite Whiskeys:
-- Glengoyne Cask Strength
-- Highland Park 12 / 18
-- Craigellachie 13

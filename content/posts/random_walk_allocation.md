@@ -1,8 +1,8 @@
----
-title: "On the optimal memory allocation for Random Walks on a Directed Graph"
-date: 2021-08-31T23:18:42+02:00
-draft: true
----
++++
+title = "On the optimal memory allocation for Random Walks on a Directed Graph"
+date = 2021-08-31
+draft = true
++++
 
 In this post I will share some simple results around the optimal memory 
 allocation for a random walk on a directed graph, and its time-memory tradeoffs.
@@ -57,7 +57,7 @@ to find the critical points:
 
 ## Extimate the parameter \\(p\\) 
 
-$p$, it's the probability that during a walk, the successor of a given node it's a trap.
+\\(p\\), it's the probability that during a walk, the successor of a given node it's a trap.
 
 This is expensive to compute **during the walk** so we might approximate it computing the **Average** probability over all nodes.
 

@@ -1,7 +1,10 @@
 +++
-title = "Fuzzing Pyo3 bindings with Atheris"
+title = "Fuzzing and developing Python native libraries in Rust"
+description = "A 'from scratch' guide on how to develop, use, and fuzz with code coverage a python native library using Rust using Atheris and Pyo3"
 date = 2021-09-05
 +++
+
+### Introdution
 Atheris is the new shiny toy I played with solving Google CTF pwns.
 It's a Python coverage guided fuzzer, based on LLVM's libFuzzer, that instrument
 python bytecode to get coverage. 
@@ -12,6 +15,36 @@ The ensmallen's rust crate is already fuzzed using both libFuzzer and Honggfuzz,
 naturally we would love to also fuzz the bindings so that we can have a rock-solid
 library.
 
+## Installing Rust
+Since we are going to work in Rust, we need to install it. this can be easily done following <https://rustup.rs/>.
+Since we are going to use `Pyo3`, we need to install a nightly version.
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+If you have already installed rust with a stable version you can run the following command to switch to the nightly channel:
+```bash
+rustup default nightly
+```
+
+Before proceeding ahead, ensure that your version of Rust is the latest, and update it:
+```bash
+rustup update
+```
+
+## Creating a Python native library in Rust with Pyo3
+
+### Base setup
+
+### Compilation
+
+### Deployment considerations
+
+### Installing and testing the bindings
+
+## Fuzzing the bindings
+
+### Installing Atheris
 
 ### Creating an harness
 To build a proof of concept we will fuzz our [TFIDF (OKAPI BM 25)](https://en.wikipedia.org/wiki/Okapi_BM25) implementation.
@@ -64,11 +97,12 @@ $ python ens.py
 #2048   pulse  cov: 2 ft: 2 corp: 2/2b lim: 21 exec/s: 1024 rss: 40Mb
 #4096   pulse  cov: 2 ft: 2 corp: 2/2b lim: 38 exec/s: 1365 rss: 40Mb
 ```
-
 Easy? 
 
 Atheris only instrument the python bytecode, so our native library get no coverage!
 So, to do some useful fuzzing we must instrument the rust code.
+
+### Compiling the bindings to get coverage
 
 This can be done by using these extra flags during compilation:
 ```bash
@@ -110,7 +144,7 @@ ImportError: /home/zom/anaconda3/lib/python3.8/site-packages/ensmallen/ensmallen
  __sancov_lowest_stack
 ```
 
-### References
+## References
 - [SanitizerCoverage](https://clang.llvm.org/docs/SanitizerCoverage.html)
 - [atheris](https://github.com/google/atheris)
 - [atheris native extensions instrumentation](https://github.com/google/atheris/blob/master/native_extension_fuzzing.md)

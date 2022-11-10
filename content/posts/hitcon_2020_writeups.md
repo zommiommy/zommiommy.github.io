@@ -1,15 +1,14 @@
 +++
 title = "Hitcon 2020 dual writeup"
 date = 2020-12-01
+description = "Write up of the rust heap exploitation challenge of Hitcon 2020 (dual)"
 +++
 
-Small writeup of the dual pwn challenge of the Hitcon 2020 CTF, I played with [mHackeroni](https://mhackeroni.it/).
+Writeup of the dual pwn challenge of the Hitcon 2020 CTF, I played with [mHackeroni](https://mhackeroni.it/).
 > Heap exploitation in Rust? Is there any hope? Yes if you implement your own Garbage Collector.
 
-
-
-
 ## The program
+The executable it's a simple CLI which allows to load a graph.
 The binary doesn't have any hard mitigations:
 ```bash
 $ checksec dual-2df8d4005c5d4ffc03183a96a5d9cb55ac4ee56dfb589d65b0bf4501a586a4b0
@@ -21,11 +20,11 @@ Partial RELRO   No canary found   NX enabled    No PIE          No RPATH   No RU
 The struct of the Nodes of the Graph is:
 ```rust
 struct Node{
-    id: u64,              // 0x0 id of the node
-    this_index: u64,      // 0x8 index of the current obj inside of the pool
-    edges: *Vec<u64>,      // 0x10 ptr to the vector of neighbours
-    last_edge: *u64,      // 0x18 ptr to the last edge in the vector of neighbours
-    edges_end: *u64,      // 0x20 ptr to the end of the vector of neighbours
+    id: u64,              // 0x00 id of the node
+    this_index: u64,      // 0x08 index of the current obj inside of the pool
+    edges: *mut Vec<u64>, // 0x10 ptr to the vector of neighbours
+    last_edge: *mut u64,  // 0x18 ptr to the last edge in the vector of neighbours
+    edges_end: *mut u64,  // 0x20 ptr to the end of the vector of neighbours
     text_len: u64,        // 0x28 Len of the text
     text_index: u64,      // 0x30 Index to the text obj in the pool
     stamp: u64,           // 0x38 operation stamp (not really usefull for pwning)
@@ -69,8 +68,11 @@ fn encode(bin_vals, bin_len) -> (&str, u64){
 Basically the `write_bin` function always add to the pool even if the encoding fails.
 The garbage collector considers a cell free if its `value >> 3 == 0` and this olds for NULL. Therefore we have a type confusion where we can have the same memory referenced as a text and a node.
 
-![](https://i.imgur.com/2GSOiz3.png)
+![](/hitcon_2020_dual.png)
 
+Now we can study the [Rust documentation](https://doc.rust-lang.org/reference/type-layout.html) to figure out how to forge the `Node` data structure.
+But [Rust does not guarantees that the fields order is respected](https://doc.rust-lang.org/reference/type-layout.html#the-default-representation) on structs without `#[repr(C)]`, so the fields order
+might change between different compiler versions.
 ```python
 def craft_node(_id, **kwargs):
     """Helper function to get the bytes of an arbitrary node"""
@@ -183,7 +185,6 @@ Steps to get a shell:
 
 The full exploit:
 ```python
-
 from pwn import *
 
 libc = ELF('/lib/x86_64-linux-gnu/libc-2.31.so')

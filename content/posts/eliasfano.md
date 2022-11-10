@@ -1,8 +1,8 @@
----
-title: "On storing a set of integers and Elias-Fano"
-date: 2021-08-31T20:44:23+02:00
-draft: true
----
++++
+title = "On storing a set of integers and Elias-Fano"
+date = 2021-08-31
+draft = true
++++
 
 In this post we will tackle the problem of indexing a set \\(X\\) of positive integers
 that takes values in the range \\(0 \le x \le u \quad \forall x \in X\\) for a given upper-bound \\(u\\). 
@@ -43,8 +43,7 @@ the binomal coefficient definition and Stirling's approximation to all the facto
 
 Now hold your breath and let's start doing some arithmetic simplifications:
 
-\\[
-\begin{aligned}
+\\[\begin{aligned}
 \log_2 \binom{u}{n} &\sim_{u, n \to \infty}  \log_2 \frac{\sqrt{u} u^u e^{-u}}{\sqrt{n} n^n e^{-n} \sqrt{2 \pi} \sqrt{u - n} (u - n)^{(u - n)} e^{n - u}} \\\\
 &\sim_{u, n \to \infty}  \log_2 \frac{\sqrt{u} u^u}{\sqrt{2 \pi} \sqrt{n} n^n  \sqrt{u - n} (u - n)^{(u - n)}} \\\\
 &\sim_{u, n \to \infty}  \log_2 \frac{1}{\sqrt{2 \pi}} \sqrt{\frac{u}{n (u - n)}} \frac{u^u}{n^n (u - n)^{(u - n)}} \\\\
@@ -56,8 +55,7 @@ Now hold your breath and let's start doing some arithmetic simplifications:
 &\sim_{u, n \to \infty}  n \log_2 \frac{u}{n} + (u - n) \log_2 \frac{u}{u - n} + \frac{1}{2} \log_2 \frac{u}{(u - n)} - \log_2 \sqrt{2 \pi} \\\\
 &\sim_{u, n \to \infty}  n \log_2 \frac{u}{n} + (u - n) \log_2 \frac{u}{u - n} + \mathcal{O}(\log u) \\\\
 &\sim_{u, n \to \infty}  n \log_2 \frac{u}{n} + \mathcal{O}(n) \\\\
-\end{aligned}
-\\]
+\end{aligned}\\]
 
 Therefore, we finally obtain that:
 
