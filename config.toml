@@ -36,5 +36,5 @@ menu = [
 ]
 
 stylesheets = [
-    "override.css",
+    #"override.css",
 ]

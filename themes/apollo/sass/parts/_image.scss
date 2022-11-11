@@ -1,35 +1,34 @@
 img {
-  border: 3px solid #ececec;
-  max-width: 100%;
+    max-width: 100%;
 }
 
 figure {
-  box-sizing: border-box;
-  display: inline-block;
-  margin: 0;
-  max-width: 100%;
+    box-sizing: border-box;
+    display: inline-block;
+    margin: 0;
+    max-width: 100%;
 }
 
 figure img {
-  max-height: 500px;
+    max-height: 500px;
 }
 
 @media screen and (min-width: 600px) {
-  figure {
-    padding: 0 40px;
-  }
+    figure {
+        padding: 0 40px;
+    }
 }
 
 figure h4 {
-  font-size: 1rem;
-  margin: 0;
-  margin-bottom: 1em;
+    font-size: 1rem;
+    margin: 0;
+    margin-bottom: 1em;
 }
 
 figure h4::before {
-  content: "↳ ";
+    content: "↳ ";
 }
 
 svg {
-  max-height: 15px;
+    max-height: 15px;
 }
