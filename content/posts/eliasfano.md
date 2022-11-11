@@ -1,5 +1,6 @@
 +++
 title = "On storing a set of integers and codes Elias-Fano"
+description = "WIP of notes on elias-fano"
 date = 2022-11-10
 +++
 
@@ -48,7 +49,7 @@ the binomal coefficient definition and Stirling's approximation to all the facto
 
 \\[\log_2 \binom{u}{n} \sim_{u, n \to \infty} \log_2 \frac{\sqrt{2 \pi u} \left ( \frac{u}{e} \right)^u}{\sqrt{2 \pi n} \left ( \frac{n}{e} \right)^n \sqrt{2 \pi (u - n)} \left ( \frac{(u - n)}{e} \right)^{(u - n)}}\\]
 
-Now hold your breath and let's start doing some arithmetic simplifications:
+Now hold your breath and let's do some arithmetic simplifications:
 
 \\[\begin{aligned}
 \log_2 \binom{u}{n} &\sim_{u, n \to \infty}  \log_2 \frac{\sqrt{u} u^u e^{-u}}{\sqrt{n} n^n e^{-n} \sqrt{2 \pi} \sqrt{u - n} (u - n)^{(u - n)} e^{n - u}} \\\\
@@ -84,23 +85,32 @@ successive values in the set, we can interpret this result as:
 ## Elias-Fano
 There's a data-strcutrue introduced by Sebastiano Vigna called [EliasFano Index](https://arxiv.org/pdf/1206.4300.pdf) which, based on the work of Perer Elias and Rober Fano on instantaneous code, allows us to solve our task using memory which is **close** to the lower-bound we found and it's called Elias-Fano.
 
-This encoding sort the values and split their binary encoding (\\(\lceil \log_2 u \rceil\\) bits) into high and low bits using an optimal threshold \\(l\\). 
-The low bits are stored contiguosly, while the gap between the high-bits are stored using the **inverted unary encoding**.
+This encoding sort the values and split, using an optimal threshold \\(l\\), their binary encoding (\\(\lceil \log_2 u \rceil\\) bits) into lower bits (\\(l\\) bits) and higher (\\(\lceil \log_2 u \rceil - l\\) bits) bits. 
+The low bits are stored contiguosly, while the gap between the high-bits are stored using the [**inverted unary encoding**](https://en.wikipedia.org/wiki/Unary_coding).
 
 ![](/elias_fano.png)
 
 ### Lower Bits \\(L\\)
 The lower \\(l\\) bits of each value are just concatenated.
-If we store these bits as contiguous array, we can efficently read and write the low bits.
+For each element \\(x_i\\) we are going to store the lower \\(l\\) bits.
 
-Since by definition, each element takes \\(l\\) bits, the total memory needed to store the lower bits is:
+Since by definition, each element takes \\(l\\) bits, for a value \\(x_i \qquad \forall 0 \le i < n\\) the total memory needed to store the lower bits is:
 \\[L = n l + \mathcal{O}(1) \text{bits}\\]
 
-### High bits \\(H\\)
-The gaps between the higher-bits are encoded using the inverted unary encoding \\(\mathcal{U}: \mathbb{N} \to 0^*1\\) which for a given integer \\(x\\) it encodes it as a sequence of \\(x\\) **0s** and then a delimiter **1**:
-\\[ \mathcal{U}(0) \to 1 \quad \mathcal{U}(1) \to 01 \quad \mathcal{U}(2) \to 001 \quad \mathcal{U}(x) \to 0^x1 \qquad\Rightarrow\qquad |\mathcal{U}(x)| = x + 1\\]
+We store these bits as contiguous array, we can efficently read and write the low bits.
 
-If we define the higher-bits as \\(\forall 0 \le i \le n \; h_i = \left\lfloor \frac{x_i}{2^l} \right \rfloor \\\), where \\(h_0 = 0\\), we can compute the number of bits used by the high-bits \\(H\\) as:
+### High bits \\(H\\)
+The inverted unary encoding \\(\mathcal{U}: \mathbb{N} \to 0^*1\\) for a given integer \\(x\\) is as a sequence of \\(x\\) **0s** and then a delimiter **1**, it follows that \\(|\mathcal{U}(x)| = x + 1\\):
+
+|\\(x\\) | \\(\mathcal{U}(x) = 0^x1 \\)|
+| ------ | --------------------|
+| 0 | 1 |
+| 1 | 01 |
+| 2 | 001 |
+| 3 | 0001 |
+| 4 | 00001 |
+
+The higher-bits of each value \\(x_i \quad \forall 0 \le i < n\\) are \\(h_i = \left\lfloor \frac{x_i}{2^l} \right \rfloor \\\), where \\(h_0 = 0\\), we can compute the number of bits used by the high-bits \\(H\\) as:
 \\[\begin{aligned}
 H &= \sum_{0 \le i < n} |\mathcal{U}(h_{i + 1} - h_{i})| + \mathcal{O}(1)\\\\
 &= \sum_{0 \le i < n} h_{i + 1} - h_{i} + 1 + \mathcal{O}(1)\\\\
@@ -150,7 +160,10 @@ As a practical approximation we are always going to use:
 ### Elias-Fano memory usage \\(\mathcal{EF}(u, n)\\)
 
 We can recognize that this is a telescopic series, so we can simplify it by using the definition of high-bits:
-\\[H = n + \sum_{0 \le i \le n} h_{i + 1} - h_{i} = n + h_n = n + \left\lfloor \frac{u}{2^l} \right \rfloor \le n +  \left\lfloor \frac{u}{2^{\left \lceil \log_2 \frac{u}{n} \right \rceil}}\right \rfloor  \le  n + \frac{u}{2^{\log_2 \frac{u}{n}}} = n + \frac{u}{\frac{u}{n}} = 2n\\]
+\\[H = n + \left\lfloor \frac{u}{2^l} \right \rfloor = n +  \left\lfloor \frac{u}{2^{\left \lceil \log_2 \frac{u}{n} \right \rceil}}\right \rfloor  \le  n + \frac{u}{2^{\log_2 \frac{u}{n}}} = n + \frac{u}{\frac{u}{n}} = 2n\\]
+
+*Note that \\(H\\) has exactly \\(n\\) **1s** , this implies that there will be at most \\(n\\) **0s**.
+It follows that the optimal data structure to store the array \\(H\\) it's a simple [Bitmap](https://en.wikipedia.org/wiki/Bit_array).*
 
 So the space used by Elias-Fano \\(\mathcal{EF}(u, n)\\) is composed by its higher \\(H\\) and lower \\(L\\) bits so:
 \\[\mathcal{EF}(u, n) = H + L \le 2n + n \left \lceil \log_2 \frac{u}{n} \right \rceil\\]
@@ -163,80 +176,87 @@ Fano proved a better bound, this encoding uses at most half-bit for element more
 
 ------
 ### Concurrent reads and writes
-If we define the higher-bits as \\(h_i \quad \forall 0 \le i \le n\\), where \\(h_0 = 0\\), we can compute the space used by the high-bits \\(H\\) as:
-\\[H = \sum_{0 \le i < n} |\mathcal{U}(h_{i + 1} - h_{i})| = \sum_{0 \le i < n} h_{i + 1} - h_{i} + 1 = \sum_{0 \le i < n} h_{i + 1} - h_{i} + \sum_{0 \le i < n } 1 = n + \sum_{0 \le i < n} h_{i + 1} - h_{i}\\]
+We can observe that, while the High-bits are defined on the gaps between successive values, this dependancy can be removed.
 
-There's an useful property about the high-bits that allows us to speed-up the construction of elias-fano, that can be proved in an analogous way to the space used by the high-bits. The position \\(p_j\\) of the \\(j\\)-th **1** in the high-bits is:
-
+This proof will be analogous to the one about the space used by the high-bits. 
+The position \\(p_j = select(X, j)\\) of the \\(j\\)-th **1** in the high-bits is just the sum of the lengths of all the previous codes:
 \\[p_j = \sum_{0 \le i < j} |\mathcal{U}(h_{i + 1} - h_{i})| = h_j + j\\]
 
 ![](/elias_fano_pibiri.png)
 
-This little fact remove the dependancy between different values, which allows,
-given a sorted vector of values, to build Elias-Fano completely in parallel.
+Therefore we can read and write the elias-fano structure in parallel!
+For a given tuple \\((i, x_i)\\) we now that we are going to set the high-bit \\(h_i + i\\) and write the low-bits in the range \\([il, (i+1)l)\\).
+
+A proper implemetation requires a precise use of atomic instructions, but it's possible to create the index in parallel
+which can greatley speedup the loading.
 
 ------
 # Implementations
 
-## Lower Bits
-An example of such implementation could be:
+```rust
+pub struct EliasFano {
+    lower_bits: CompactArray,
+    higher_bits: BitMap,
+    universe: u64,
+    number_of_elements: u64,
+    threshold: u64,
+}
+
+impl EliasFano {
+    pub fn new(universe: u64, number_of_elements: u64) -> Self {
+        let threshold = (
+            universe as f64 / number_of_elements as f64
+        ).log2().ceil() as u64;
+
+    }
+}
+```
+
+## CompactArray
+TODO
+
+## BitMap
 
 ```rust
-pub struct LowBits{
+pub struct BitMap {
     data: Vec<u64>,
-    word_size: u64,
-    word_mask: u64,
-    word_shit: u64,
-    number_of_elements: usize,
 }
-
-impl LowBits {
-    pub fn new(number_of_elements: usize, word_size: u64) -> Self {
-        let word_shift = (word_size as f64).log2().ceil() as u64;
-        LowBits{
-            // allocate a bit extra space so we could remove the boundcheck
-            data: vec![0; 2 + (number_of_elements / word_size)],
-            word_size,
-            number_of_elements,
-            word_shift,
-            word_mask: (1 << word_shift) - 1,
-        }
-    }
-
-    pub fn read(&mut self, index: usize) -> usize {
-        let pos = index * self.word_size;
-        let o1 = pos & ;
-        let o2 = self.word_size - o1;
-
-        let mask = (1 << self.word_size) - 1;
-        let base = (pos >> self.word_shift) as usize;
-        let lower = (array[base] >> o1) & mask;
-        let higher = (array[base + 1]) << o2;
-
-        (higher | lower) & mask
-    }
-
-    pub fn write(&mut self, index: usize, value: usize) {
-        let pos = index * value_size;
-        let o1 = pos & self.word_mask;
-        let o2 = self.word_size - o1;
-
-        let lower = value >> o1;
-        let higher = value << o2;
-
-        let base = (pos >> self.word_shift) as usize;
-        array[base] |= lower;
-        array[base + 1] |= higher;
-    }
-}
-
 ```
-This is an educational implementation and can be hugely improved by removing unnecessary bound checks,
-making a version with a generic const `word_size` so the code can be optimized if the `word_size` is known
-at compilation time.
+
+# Rank and Select operations on EliasFano
+
+## Rank
+\\(\text{rank}(X, v)\\) returns the number of values in \\(X\\) that are strictly smaller than \\(v\\)
+This is equivalent to counting the number of **1s** that appears in the high-bits, before the one corrisponding to the value \\(v\\).
+
+```rust
+impl EliasFano {
+    pub fn rank(&self, index: usize) -> Option<usize> {
+
+    }
+}
+```
+
+## Select
+\\(\text{select}(X, i)\\) returns the \\(i\\)-th smallest value in \\(X\\).
+We can immediatley know which are the low bits, but we need to find the position of the \\(i\\)-th **1** in the high-bits.
+
+```rust
+impl EliasFano {
+    pub fn select(&self, index: usize) -> Option<usize> {
+        let low_bits  = self.lower_bits.get(index)?;
+        let high_bits = self.higher_bits.select(index)?
+        Some((high_bits << self.l) | low_bits)
+    }
+}
+```
+
+## Making Rank and Select Constant time with a sparse index
+
+
 
 
 # References
-- https://core.ac.uk/download/pdf/79617357.pdf
-- https://web.archive.org/web/20160312010342/https://www.computer.org/csdl/proceedings/focs/1989/1982/00/063533.pdf
-- https://arxiv.org/pdf/1206.4300.pdf
+- <https://core.ac.uk/download/pdf/79617357.pdf>
+- <https://web.archive.org/web/20160312010342/https://www.computer.org/csdl/proceedings/focs/1989/1982/00/063533.pdf>
+- <https://arxiv.org/pdf/1206.4300.pdf>

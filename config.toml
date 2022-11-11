@@ -18,7 +18,7 @@ highlight_theme = "ayu-dark"
 [extra]
 toc = true
 use_cdn = false
-favicon = "https://rustacean.net/assets/corro.svg"
+favicon = "/corro.svg"
 
 # Put all your custom variables here
 socials = [
