@@ -20,7 +20,6 @@ operations for all succint data-structures.
 To be more precise, we are searching for a **succint data-structure**, which is a representation that allows for fast **rank** and **select** and uses \\(Z + o(Z)\\) bits, where
 \\(Z\\) is the information-theoretical minimum space required.
 
-------
 ## Theoretical Lowerbound
 Before thinking about the data-structure we should have to compute the theoretical minimum 
 number of bits \\(Z\\) required for our task using Shannon's entropy.
@@ -174,7 +173,6 @@ Therefore, we can prove that this structure uses at most 2-extra bits for elemen
 \\[\mathcal{EF}(u, n) - Z \sim_{u, n \to \infty} 2n - \mathcal{O}(n) \le 2n\\]
 Fano proved a better bound, this encoding uses at most half-bit for element more than the theoretical minimum, so this structure it's not a succint data-structure, but it's really close thus Vigna's name of quasi-succint data-structure.
 
-------
 ### Concurrent reads and writes
 We can observe that, while the High-bits are defined on the gaps between successive values, this dependancy can be removed.
 
@@ -190,7 +188,6 @@ For a given tuple \\((i, x_i)\\) we now that we are going to set the high-bit \\
 A proper implemetation requires a precise use of atomic instructions, but it's possible to create the index in parallel
 which can greatley speedup the loading.
 
-------
 # Implementations
 
 ```rust
