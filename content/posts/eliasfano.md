@@ -1,6 +1,6 @@
 +++
 title = "On storing a set of integers and codes Elias-Fano"
-description = "WIP of notes on elias-fano"
+description = "First post on Elias Fano, here we discuss about the math and the theoretical background"
 date = 2022-11-10
 +++
 

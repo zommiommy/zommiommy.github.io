@@ -1,6 +1,6 @@
 +++
 title = "Fuzzing and developing Python native libraries in Rust"
-description = "A 'from scratch' guide on how to develop, use, and fuzz with code coverage a python native library using Rust using Atheris and Pyo3"
+description = "(WIP) A 'from scratch' guide on how to develop, use, and fuzz with code coverage a python native library using Rust using Atheris and Pyo3"
 date = 2021-09-05
 +++
 
