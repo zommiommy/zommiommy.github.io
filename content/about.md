@@ -3,8 +3,11 @@ title = "About "
 path = "about"
 +++
 
+
 ### TLDR
 It's a me, zom. I like Math and Computers, I'm what happend when you can't choose a single career path.
+
+![](/pfp.jpg)
 
 ### Security
 I play Capture The Flags with the Italian Teams [@mHackeroni](https://mhackeroni.it/) (4 times [DEFCON](https://defcon.org/html/links/dc-ctf.html) finalists) and [@towerofhanoi](https://toh.necst.it/) (The oldest CTF team in Italy).  
