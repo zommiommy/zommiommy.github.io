@@ -6,6 +6,7 @@ path = "about"
 
 ### TLDR
 It's a me, zom. I like Math and Computers, I'm what happend when you can't choose a single career path.
+你好！我刚开始学中文！
 
 ![](/pfp.jpg)
 
