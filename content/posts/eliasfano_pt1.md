@@ -1,6 +1,6 @@
 +++
-title = "On storing a set of integers and codes Elias-Fano (Pt.1)"
-description = "First post on Elias Fano, here we discuss about the math and the theoretical background"
+title = "Storing a set of integers, Elias-Fano, and Graphs (Pt.1)"
+description = "First post on Elias Fano, here we discuss about the math and the theoretical background behind Elias-Fano"
 date = 2022-11-10
 +++
 
@@ -188,7 +188,7 @@ For a given tuple \\((i, x_i)\\) we now that we are going to set the high-bit \\
 A proper implemetation requires a precise use of atomic instructions, but it's possible to create the index in parallel
 which can greatley speedup the loading.
 
-**See you in the next post for the details on how to implement it efficently**
+**See you in the next posts for the details on how to encode a graph and then how to implement it efficently**
 
 # References
 - <https://core.ac.uk/download/pdf/79617357.pdf>
