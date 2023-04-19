@@ -1,7 +1,6 @@
 +++
-title = "On the optimal memory allocation for Random Walks on a Directed Graph"
+title = "On the optimal memory allocation for Random Walks on a Directed Graph (Draft)"
 date = 2021-08-31
-draft = true
 +++
 
 In this post I will share some simple results around the optimal memory 

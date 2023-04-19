@@ -1,8 +1,7 @@
 +++
-title = "Storing a set of integers, Elias-Fano, and Graphs (Pt.2)"
+title = "Storing a set of integers, Elias-Fano, and Graphs (Pt.2) (Draft)"
 description = "How to encode a graph in Elias-Fano, and its properties"
 date = 2022-12-20
-draft = true
 +++
 
 ## Introduction
