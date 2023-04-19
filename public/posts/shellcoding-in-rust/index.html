@@ -1,0 +1,142 @@
+<!doctype html><html><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+        Writing Shellcodes in Rust
+    </title><link href=/corro.svg rel=icon type=image/png><link href=https://zom.wtf/fonts.css rel=stylesheet><link href=/path/to/folder/css/academicons.min.css rel=stylesheet><link href=https://zom.wtf/atom.xml rel=alternate title=zom.wtf type=application/atom+xml><link href=https://zom.wtf/theme/light.css rel=stylesheet><link href=https://zom.wtf/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><img id=title_icon src=/corro.svg><a href=https://zom.wtf>zom.wtf</a><div class=socials><a class=social href=https://twitter.com/zommiommy> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/zommiommy> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/about style=margin-left:.7em>/about</a><a href=/goodstuff style=margin-left:.7em>/good_stuff</a></nav></header><main><article><div class=title><div class=page-header>Writing Shellcodes in Rust</div><div class=meta>Posted on <time>2022-07-09</time></div></div><section class=body><p><strong>TLDR</strong> You can clone and modify <a href=https://github.com/zommiommy/rust_shellcoding>this example repository</a>.<p>Add the rust target to compile for plain x86_64:<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>rustup</span><span> target add x86_64-unknown-none
+</span></code></pre><p>Create a new binary crate:<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>cargo</span><span> new</span><span style=color:#f29718> --bin</span><span> shellcode
+</span></code></pre><p>Add to your <code>Cargo.toml</code> the following configurations for the release profile to make the shellcode as small as possible.<pre class=language-toml data-lang=toml style=background:#0f1419;color:#bfbab0><code class=language-toml data-lang=toml><span>[</span><span style=color:#59c2ff>profile</span><span style=color:#bfbab0cc>.</span><span style=color:#59c2ff>release</span><span>]
+</span><span style=color:#59c2ff>panic </span><span>= </span><span style=color:#c2d94c>"abort"             </span><span style=font-style:italic;color:#5c6773># don't unwind the stack on panic
+</span><span style=color:#59c2ff>opt-level </span><span>= </span><span style=color:#c2d94c>"z"             </span><span style=font-style:italic;color:#5c6773># optimize for size
+</span><span style=color:#59c2ff>debug</span><span>=</span><span style=color:#f29718>0                     </span><span style=font-style:italic;color:#5c6773># no debug info
+</span><span style=color:#59c2ff>debug-assertions </span><span>= </span><span style=color:#f29718>false    </span><span style=font-style:italic;color:#5c6773>#
+</span><span style=color:#59c2ff>overflow-checks </span><span>= </span><span style=color:#f29718>false     </span><span style=font-style:italic;color:#5c6773># optional
+</span><span style=color:#59c2ff>strip</span><span>=</span><span style=color:#c2d94c>"symbols"             </span><span style=font-style:italic;color:#5c6773># remove symbols
+</span></code></pre><p>The <code>main.rs</code> for our shellcode looks like this:<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>no_std</span><span>]
+</span><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>no_main</span><span>]
+</span><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>feature</span><span>(core_intrinsics)]
+</span><span>
+</span><span style=color:#ff7733>const</span><span> N</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64 </span><span style=color:#f29668>= </span><span style=color:#f29718>100</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// our shellcode
+</span><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>no_mangle</span><span>]
+</span><span style=color:#ff7733>pub fn </span><span style=color:#ffb454>_start</span><span>() {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> buffer </span><span style=color:#f29668>= </span><span>[</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>1024</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> sum </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span>N {
+</span><span>        </span><span style=color:#ff7733>let</span><span> start </span><span style=color:#f29668>= </span><span style=color:#f07178>rdtsc</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        buffer[i </span><span style=color:#f29668>as </span><span style=color:#ff7733>usize</span><span>] </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>let</span><span> end </span><span style=color:#f29668>= </span><span style=color:#f07178>rdtsc</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        sum </span><span style=color:#f29668>+=</span><span> end </span><span style=color:#f29668>-</span><span> start</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#f07178>print!</span><span>(sum </span><span style=color:#f29668>/</span><span> N)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>/// Handle the panics, by default abort
+</span><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>panic_handler</span><span>]
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>panic</span><span>(</span><span style=color:#f29718>_info</span><span style=color:#bfbab0cc>: </span><span style=color:#f29668>&</span><span>core</span><span style=color:#f29668>::</span><span>panic</span><span style=color:#f29668>::</span><span>PanicInfo) </span><span style=color:#bfbab0cc>-> </span><span style=color:#f29668>! </span><span>{
+</span><span>    core</span><span style=color:#f29668>::</span><span>intrinsics</span><span style=color:#f29668>::</span><span>abort()
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// simple macro to call the write syscall with an integer
+</span><span style=color:#f07178>macro_rules! </span><span style=color:#59c2ff>print </span><span>{
+</span><span>    (</span><span style=color:#f29718>$value</span><span style=color:#bfbab0cc>:</span><span style=color:#ff7733>expr</span><span>) </span><span style=color:#f29668>=> </span><span>{
+</span><span>        </span><span style=color:#ff7733>unsafe</span><span>{
+</span><span>            core</span><span style=color:#f29668>::</span><span>arch</span><span style=color:#f29668>::</span><span>asm</span><span style=color:#f29668>!</span><span>(
+</span><span>                </span><span style=color:#c2d94c>"push {input}"</span><span style=color:#bfbab0cc>,  </span><span style=font-style:italic;color:#5c6773>// put the value to print on stack 
+</span><span>                </span><span style=color:#c2d94c>"mov rdx, 8"</span><span style=color:#bfbab0cc>,   </span><span style=font-style:italic;color:#5c6773>// len = 8
+</span><span>                </span><span style=color:#c2d94c>"mov rsi, rsp"</span><span style=color:#bfbab0cc>, </span><span style=font-style:italic;color:#5c6773>//char *buf = rsp
+</span><span>                </span><span style=color:#c2d94c>"mov rdi, 1"</span><span style=color:#bfbab0cc>,   </span><span style=font-style:italic;color:#5c6773>// fd = stdout
+</span><span>                </span><span style=color:#c2d94c>"mov rax, 1"</span><span style=color:#bfbab0cc>,   </span><span style=font-style:italic;color:#5c6773>// write
+</span><span>                </span><span style=color:#c2d94c>"syscall"</span><span style=color:#bfbab0cc>,
+</span><span>
+</span><span>                input </span><span style=color:#f29668>= in</span><span>(reg) $value</span><span style=color:#bfbab0cc>,
+</span><span>                </span><span style=color:#f07178>out</span><span>(</span><span style=color:#c2d94c>"rdx"</span><span>) </span><span style=color:#f29668>_</span><span style=color:#bfbab0cc>,
+</span><span>                </span><span style=color:#f07178>out</span><span>(</span><span style=color:#c2d94c>"rsi"</span><span>) </span><span style=color:#f29668>_</span><span style=color:#bfbab0cc>,
+</span><span>                </span><span style=color:#f07178>out</span><span>(</span><span style=color:#c2d94c>"rdi"</span><span>) </span><span style=color:#f29668>_</span><span style=color:#bfbab0cc>,
+</span><span>                </span><span style=color:#f07178>out</span><span>(</span><span style=color:#c2d94c>"rax"</span><span>) </span><span style=color:#f29668>_</span><span style=color:#bfbab0cc>,
+</span><span>            )</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// safe wrapper, this might fails only if we are not on x86_64 
+</span><span style=color:#ff7733>pub fn </span><span style=color:#ffb454>rdtsc</span><span>() </span><span style=color:#bfbab0cc>-> </span><span style=color:#ff7733>u64 </span><span>{
+</span><span>    </span><span style=color:#ff7733>unsafe</span><span>{core</span><span style=color:#f29668>::</span><span>arch</span><span style=color:#f29668>::</span><span>x86_64</span><span style=color:#f29668>::</span><span>_rdtsc()}
+</span><span>}
+</span></code></pre><p>Finally, we can compile the shellcode with:<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span>RUSTFLAGS</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"-C relocation-model=pie" </span><span style=color:#ffb454>cargo</span><span> build</span><span style=color:#f29718> --release --target</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"x86_64-unknown-none"
+</span></code></pre><p>If you want your shellcode to exploit AVX and other instructions you can specify your target CPU with <code>-C target-cpu=native</code>.<p>This will create a file <code>./target/x86_64-unknown-none/release/shellcode</code> which <code>.text</code> segment contains the shellcode.<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>objdump</span><span style=color:#f29718> -D</span><span> ./target/x86_64-unknown-none/release/shellcode</span><span style=color:#f29718> -M</span><span> intel</span><span style=color:#f29718> -j</span><span> .text
+</span><span>
+</span><span style=color:#ffb454>./target/x86_64-unknown-none/release/shellcode:</span><span>     file format elf64-x86-64
+</span><span>
+</span><span style=color:#ffb454>Disassembly</span><span> of section .text:
+</span><span>
+</span><span style=color:#ffb454>000000000000120d </span><span style=color:#f29668><</span><span>.text</span><span style=color:#f29668>></span><span>:
+</span><span>    </span><span style=color:#ffb454>120d:</span><span>       6a 64                   push   0x64
+</span><span>    </span><span style=color:#ffb454>120f:</span><span>       5f                      pop    rdi
+</span><span>    </span><span style=color:#ffb454>1210:</span><span>       31 c9                   xor    ecx,ecx
+</span><span>    </span><span style=color:#ffb454>1212:</span><span>       48 83 ef 01             sub    rdi,0x1
+</span><span>    </span><span style=color:#ffb454>1216:</span><span>       72 1d                   jb     0x1235
+</span><span>    </span><span style=color:#ffb454>1218:</span><span>       0f 31                   rdtsc  
+</span><span>    </span><span style=color:#ffb454>121a:</span><span>       48 89 d6                mov    rsi,rdx
+</span><span>    </span><span style=color:#ffb454>121d:</span><span>       48 c1 e6 20             shl    rsi,0x20
+</span><span>    </span><span style=color:#ffb454>1221:</span><span>       48 09 c6                or     rsi,rax
+</span><span>    </span><span style=color:#ffb454>1224:</span><span>       0f 31                   rdtsc  
+</span><span>    </span><span style=color:#ffb454>1226:</span><span>       48 c1 e2 20             shl    rdx,0x20
+</span><span>    </span><span style=color:#ffb454>122a:</span><span>       48 09 c2                or     rdx,rax
+</span><span>    </span><span style=color:#ffb454>122d:</span><span>       48 29 f1                sub    rcx,rsi
+</span><span>    </span><span style=color:#ffb454>1230:</span><span>       48 01 d1                add    rcx,rdx
+</span><span>    </span><span style=color:#ffb454>1233:</span><span>       eb dd                   jmp    0x1212
+</span><span>    </span><span style=color:#ffb454>1235:</span><span>       50                      push   rax
+</span><span>    </span><span style=color:#ffb454>1236:</span><span>       6a 64                   push   0x64
+</span><span>    </span><span style=color:#ffb454>1238:</span><span>       5e                      pop    rsi
+</span><span>    </span><span style=color:#ffb454>1239:</span><span>       48 89 c8                mov    rax,rcx
+</span><span>    </span><span style=color:#ffb454>123c:</span><span>       31 d2                   xor    edx,edx
+</span><span>    </span><span style=color:#ffb454>123e:</span><span>       48 f7 f6                div    rsi
+</span><span>    </span><span style=color:#ffb454>1241:</span><span>       48 89 c1                mov    rcx,rax
+</span><span>    </span><span style=color:#ffb454>1244:</span><span>       51                      push   rcx
+</span><span>    </span><span style=color:#ffb454>1245:</span><span>       48 c7 c2 08 00 00 00    mov    rdx,0x8
+</span><span>    </span><span style=color:#ffb454>124c:</span><span>       48 89 e6                mov    rsi,rsp
+</span><span>    </span><span style=color:#ffb454>124f:</span><span>       48 c7 c7 01 00 00 00    mov    rdi,0x1
+</span><span>    </span><span style=color:#ffb454>1256:</span><span>       48 c7 c0 01 00 00 00    mov    rax,0x1
+</span><span>    </span><span style=color:#ffb454>125d:</span><span>       0f 05                   syscall 
+</span><span>    </span><span style=color:#ffb454>125f:</span><span>       58                      pop    rax
+</span><span>    </span><span style=color:#ffb454>1260:</span><span>       c3                      ret    
+</span></code></pre><p>To dump the shellcode to a binary file use <code>objcopy</code> to dump the whole text segment<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>objcopy</span><span style=color:#f29718> -O</span><span> binary ./target/x86_64-unknown-none/release/shellcode shellcode.bin</span><span style=color:#f29718> -j</span><span> .text
+</span></code></pre><p><strong>Caveats</strong>: Since we are dumping the <code>.text</code> segment, we can't use static or global variables because these would go in the sections <code>.bss</code>, <code>.rodata</code>, and <code>.data</code> which we won't load.<p>The dumped shellcode can be examined with:<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>objdump</span><span style=color:#f29718> -D -b</span><span> binary</span><span style=color:#f29718> -mi386 -Mx86-64 -Mintel</span><span> ./shellcode.bin
+</span><span style=color:#ffb454>./shellcode.bin:</span><span>     file format binary
+</span><span>
+</span><span>
+</span><span style=color:#ffb454>Disassembly</span><span> of section .data:
+</span><span>
+</span><span style=color:#ffb454>00000000 </span><span style=color:#f29668><</span><span>.data</span><span style=color:#f29668>></span><span>:
+</span><span>   </span><span style=color:#ffb454>0:</span><span>   6a 64                   push   0x64
+</span><span>   </span><span style=color:#ffb454>2:</span><span>   5f                      pop    rdi
+</span><span>   </span><span style=color:#ffb454>3:</span><span>   31 c9                   xor    ecx,ecx
+</span><span>   </span><span style=color:#ffb454>5:</span><span>   48 83 ef 01             sub    rdi,0x1
+</span><span>   </span><span style=color:#ffb454>9:</span><span>   72 1d                   jb     0x28
+</span><span>   </span><span style=color:#ffb454>b:</span><span>   0f 31                   rdtsc  
+</span><span>   </span><span style=color:#ffb454>d:</span><span>   48 89 d6                mov    rsi,rdx
+</span><span>  </span><span style=color:#ffb454>10:</span><span>   48 c1 e6 20             shl    rsi,0x20
+</span><span>  </span><span style=color:#ffb454>14:</span><span>   48 09 c6                or     rsi,rax
+</span><span>  </span><span style=color:#ffb454>17:</span><span>   0f 31                   rdtsc  
+</span><span>  </span><span style=color:#ffb454>19:</span><span>   48 c1 e2 20             shl    rdx,0x20
+</span><span>  </span><span style=color:#ffb454>1d:</span><span>   48 09 c2                or     rdx,rax
+</span><span>  </span><span style=color:#ffb454>20:</span><span>   48 29 f1                sub    rcx,rsi
+</span><span>  </span><span style=color:#ffb454>23:</span><span>   48 01 d1                add    rcx,rdx
+</span><span>  </span><span style=color:#ffb454>26:</span><span>   eb dd                   jmp    0x5
+</span><span>  </span><span style=color:#ffb454>28:</span><span>   50                      push   rax
+</span><span>  </span><span style=color:#ffb454>29:</span><span>   6a 64                   push   0x64
+</span><span>  </span><span style=color:#ffb454>2b:</span><span>   5e                      pop    rsi
+</span><span>  </span><span style=color:#ffb454>2c:</span><span>   48 89 c8                mov    rax,rcx
+</span><span>  </span><span style=color:#ffb454>2f:</span><span>   31 d2                   xor    edx,edx
+</span><span>  </span><span style=color:#ffb454>31:</span><span>   48 f7 f6                div    rsi
+</span><span>  </span><span style=color:#ffb454>34:</span><span>   48 89 c1                mov    rcx,rax
+</span><span>  </span><span style=color:#ffb454>37:</span><span>   51                      push   rcx
+</span><span>  </span><span style=color:#ffb454>38:</span><span>   48 c7 c2 08 00 00 00    mov    rdx,0x8
+</span><span>  </span><span style=color:#ffb454>3f:</span><span>   48 89 e6                mov    rsi,rsp
+</span><span>  </span><span style=color:#ffb454>42:</span><span>   48 c7 c7 01 00 00 00    mov    rdi,0x1
+</span><span>  </span><span style=color:#ffb454>49:</span><span>   48 c7 c0 01 00 00 00    mov    rax,0x1
+</span><span>  </span><span style=color:#ffb454>50:</span><span>   0f 05                   syscall 
+</span><span>  </span><span style=color:#ffb454>52:</span><span>   58                      pop    rax
+</span><span>  </span><span style=color:#ffb454>53:</span><span>   c3                      ret    
+</span></code></pre><p>If the code editor keeps warning about duplciated panic handler, just create the file <code>.cargo/config</code> with:<pre class=language-toml data-lang=toml style=background:#0f1419;color:#bfbab0><code class=language-toml data-lang=toml><span>[</span><span style=color:#59c2ff>build</span><span>]
+</span><span style=color:#59c2ff>target </span><span>= </span><span style=color:#c2d94c>"x86_64-unknown-none"
+</span></code></pre></section></article></main></div><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script async id=MathJax-script src=https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js></script>

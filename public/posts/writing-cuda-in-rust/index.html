@@ -1,0 +1,189 @@
+<!doctype html><html><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+        CUDA kernels in Rust (Draft)
+    </title><link href=/corro.svg rel=icon type=image/png><link href=https://zom.wtf/fonts.css rel=stylesheet><link href=/path/to/folder/css/academicons.min.css rel=stylesheet><link href=https://zom.wtf/atom.xml rel=alternate title=zom.wtf type=application/atom+xml><link href=https://zom.wtf/theme/light.css rel=stylesheet><link href=https://zom.wtf/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><img id=title_icon src=/corro.svg><a href=https://zom.wtf>zom.wtf</a><div class=socials><a class=social href=https://twitter.com/zommiommy> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/zommiommy> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/about style=margin-left:.7em>/about</a><a href=/goodstuff style=margin-left:.7em>/good_stuff</a></nav></header><main><article><div class=title><div class=page-header>CUDA kernels in Rust (Draft)</div><div class=meta>Posted on <time>2022-09-05</time></div></div><h1>Table of Contents</h1><ul><li><a href=https://zom.wtf/posts/writing-cuda-in-rust/#compiling-rust-to-ptx>Compiling Rust to PTX</a><li><a href=https://zom.wtf/posts/writing-cuda-in-rust/#loading-and-executing-a-ptx>Loading and executing a PTX</a><li><a href=https://zom.wtf/posts/writing-cuda-in-rust/#putting-it-together-add-the-toolchain-with>Putting it together# add the toolchain with:</a></ul><section class=body><p><strong>TLDR</strong> you can use <a href=https://github.com/zommiommy/cuda_rust_template>this example repository</a>.<h2 id=compiling-rust-to-ptx>Compiling Rust to PTX</h2><pre class=language-toml data-lang=toml style=background:#0f1419;color:#bfbab0><code class=language-toml data-lang=toml><span>[</span><span style=color:#59c2ff>lib</span><span>]
+</span><span style=color:#59c2ff>crate-type </span><span>= [</span><span style=color:#c2d94c>"cdylib"</span><span>]
+</span></code></pre><pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>no_std</span><span>]
+</span><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>feature</span><span>(abi_ptx</span><span style=color:#bfbab0cc>,</span><span> core_intrinsics)]
+</span><span style=color:#bfbab0cc>#!</span><span>[</span><span style=color:#ffb454>feature</span><span>(asm_experimental_arch)]
+</span><span>
+</span><span style=color:#ff7733>use </span><span>core</span><span style=color:#f29668>::</span><span>arch</span><span style=color:#f29668>::</span><span>asm</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>no_mangle</span><span>]
+</span><span style=font-style:italic;color:#5c6773>/// Actual function called by the CPU code in the GPU
+</span><span style=color:#ff7733>pub unsafe extern </span><span style=color:#c2d94c>"ptx-kernel" </span><span style=color:#ff7733>fn </span><span style=color:#ffb454>my_kernel</span><span>(
+</span><span>    </span><span style=color:#f29718>input</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>*mut u32</span><span>,
+</span><span>    </span><span style=color:#f29718>input_len</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>usize</span><span>,
+</span><span>    </span><span style=color:#f29718>output</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>*mut u32</span><span>,
+</span><span>    </span><span style=color:#f29718>output_len</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>usize</span><span>,
+</span><span>) {
+</span><span>    </span><span style=color:#f07178>safe_kernel</span><span>(
+</span><span>        core</span><span style=color:#f29668>::</span><span>slice</span><span style=color:#f29668>::</span><span>from_raw_parts_mut(input</span><span style=color:#bfbab0cc>,</span><span> input_len)</span><span style=color:#bfbab0cc>,
+</span><span>        core</span><span style=color:#f29668>::</span><span>slice</span><span style=color:#f29668>::</span><span>from_raw_parts_mut(output</span><span style=color:#bfbab0cc>,</span><span> output_len)</span><span style=color:#bfbab0cc>,
+</span><span>    )
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>safe_kernel</span><span>(</span><span style=color:#f29718>input</span><span style=color:#bfbab0cc>: </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span>[</span><span style=color:#ff7733>u8</span><span>], </span><span style=color:#f29718>output</span><span style=color:#bfbab0cc>: </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span>[</span><span style=color:#ff7733>u8</span><span>]) {
+</span><span>    </span><span style=color:#ff7733>let</span><span> idx </span><span style=color:#f29668>= </span><span>(</span><span style=color:#f07178>block_idx_x</span><span>() </span><span style=color:#f29668>* </span><span style=color:#f29718>1024 </span><span style=color:#f29668>+ </span><span style=color:#f07178>thread_idx_x</span><span>()) </span><span style=color:#f29668>as </span><span style=color:#ff7733>isize</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    output[idx] </span><span style=color:#f29668>= </span><span style=color:#f07178>clock</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>panic_handler</span><span>]
+</span><span style=color:#ff7733>pub unsafe fn </span><span style=color:#ffb454>breakpoint_panic_handler</span><span>(</span><span style=color:#f29668>_</span><span>: </span><span style=color:#f29668>&::</span><span>core</span><span style=color:#f29668>::</span><span>panic</span><span style=color:#f29668>::</span><span>PanicInfo) </span><span style=color:#bfbab0cc>-> </span><span style=color:#f29668>! </span><span>{
+</span><span>    core</span><span style=color:#f29668>::</span><span>intrinsics</span><span style=color:#f29668>::</span><span>breakpoint()</span><span style=color:#bfbab0cc>;
+</span><span>    core</span><span style=color:#f29668>::</span><span>hint</span><span style=color:#f29668>::</span><span>unreachable_unchecked()</span><span style=color:#bfbab0cc>;
+</span><span>}   
+</span></code></pre><p>Then we can manually create our intrinsics<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>inline</span><span>(always)]
+</span><span style=color:#ff7733>pub fn </span><span style=color:#ffb454>clock</span><span>() </span><span style=color:#bfbab0cc>-> </span><span style=color:#ff7733>u32</span><span>{
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> result</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u32</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsafe </span><span>{
+</span><span>        </span><span style=color:#f07178>asm!</span><span>(
+</span><span>            </span><span style=color:#c2d94c>"mov.u32 {output}, %clock;"</span><span style=color:#bfbab0cc>,
+</span><span>            output </span><span style=color:#f29668>= </span><span style=color:#f07178>out</span><span>(reg32) result</span><span style=color:#bfbab0cc>,
+</span><span>        )</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    result
+</span><span>}
+</span><span>
+</span><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>inline</span><span>(always)]
+</span><span style=color:#ff7733>pub fn </span><span style=color:#ffb454>thread_idx_x</span><span>() </span><span style=color:#bfbab0cc>-> </span><span style=color:#ff7733>u32</span><span>{
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> result</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u32</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsafe </span><span>{
+</span><span>        </span><span style=color:#f07178>asm!</span><span>(
+</span><span>            </span><span style=color:#c2d94c>"mov.u32 {r}, %tid.x;"</span><span style=color:#bfbab0cc>,
+</span><span>            r </span><span style=color:#f29668>= </span><span style=color:#f07178>out</span><span>(reg32) result</span><span style=color:#bfbab0cc>,
+</span><span>        )</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    result
+</span><span>}
+</span><span>
+</span><span style=color:#bfbab0cc>#</span><span>[</span><span style=color:#ffb454>inline</span><span>(always)]
+</span><span style=color:#ff7733>pub fn </span><span style=color:#ffb454>block_idx_x</span><span>() </span><span style=color:#bfbab0cc>-> </span><span style=color:#ff7733>u32</span><span>{
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> result</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u32</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>unsafe </span><span>{
+</span><span>        </span><span style=color:#f07178>asm!</span><span>(
+</span><span>            </span><span style=color:#c2d94c>"mov.u32 {r}, %ctaid.x;"</span><span style=color:#bfbab0cc>,
+</span><span>            r </span><span style=color:#f29668>= </span><span style=color:#f07178>out</span><span>(reg32) result</span><span style=color:#bfbab0cc>,
+</span><span>        )</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    result
+</span><span>}
+</span></code></pre><h2 id=loading-and-executing-a-ptx>Loading and executing a PTX</h2><pre class=language-toml data-lang=toml style=background:#0f1419;color:#bfbab0><code class=language-toml data-lang=toml><span>[</span><span style=color:#59c2ff>dependencies</span><span>]
+</span><span style=color:#59c2ff>cuda-driver-sys</span><span>=</span><span style=color:#c2d94c>"0.3.0"
+</span><span style=color:#59c2ff>cuda-runtime-sys</span><span>=</span><span style=color:#c2d94c>"0.3.0-alpha.1"
+</span></code></pre><pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>use </span><span>cuda_driver_sys</span><span style=color:#f29668>::*</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>use </span><span>cuda_runtime_sys</span><span style=color:#f29668>::*</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>use </span><span>std</span><span style=color:#f29668>::</span><span>ffi</span><span style=color:#f29668>::</span><span>{CString</span><span style=color:#bfbab0cc>, </span><span style=color:#ff7733>c_void</span><span>}</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>/// The path to the PTX generated by the GPU code
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>PTX_PATH</span><span style=color:#bfbab0cc>: </span><span style=color:#f29668>&</span><span style=color:#ff7733>str </span><span style=color:#f29668>= </span><span style=color:#c2d94c>"../gpu_code/target/nvptx64-nvidia-cuda/release/gpu_code.ptx"</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>/// allocate a buffer in the device
+</span><span style=color:#ff7733>unsafe fn </span><span style=color:#ffb454>allocate</span><span>&LTT>(</span><span style=color:#f29718>size</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>usize</span><span>) </span><span style=color:#bfbab0cc>-></span><span> CUdeviceptr {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> dptr</span><span style=color:#bfbab0cc>:</span><span> CUdeviceptr </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuMemAlloc_v2(
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> dptr </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUdeviceptr</span><span style=color:#bfbab0cc>, 
+</span><span>        size </span><span style=color:#f29668>* </span><span>core</span><span style=color:#f29668>::</span><span>mem</span><span style=color:#f29668>::</span><span>size_of</span><span style=color:#f29668>::</span><span>&LTT>()
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    dptr
+</span><span>}
+</span></code></pre><pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>fn </span><span style=color:#ffb454>main</span><span>() {</span><span style=color:#ff7733>unsafe</span><span>{
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Init the cuda library
+</span><span>    cuInit(</span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Get the first available device
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> device</span><span style=color:#bfbab0cc>:</span><span> CUdevice </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuDeviceGet(</span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> device </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUdevice</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;    
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// create a context
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> context</span><span style=color:#bfbab0cc>:</span><span> CUcontext </span><span style=color:#f29668>= </span><span>core</span><span style=color:#f29668>::</span><span>ptr</span><span style=color:#f29668>::</span><span>null_mut()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuCtxCreate_v2(
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> context </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUcontext</span><span style=color:#bfbab0cc>, 
+</span><span>        cudaDeviceScheduleAuto</span><span style=color:#bfbab0cc>, 
+</span><span>        device
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Load the PTX file
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> module</span><span style=color:#bfbab0cc>:</span><span> CUmodule </span><span style=color:#f29668>= </span><span>core</span><span style=color:#f29668>::</span><span>ptr</span><span style=color:#f29668>::</span><span>null_mut()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> file_name </span><span style=color:#f29668>= </span><span>CString</span><span style=color:#f29668>::</span><span>new(</span><span style=color:#f29718>PTX_PATH</span><span>)</span><span style=color:#f29668>.</span><span style=color:#f07178>unwrap</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuModuleLoad(
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> module </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUmodule</span><span style=color:#bfbab0cc>,
+</span><span>        file_name</span><span style=color:#f29668>.</span><span style=color:#f07178>as_ptr</span><span>()</span><span style=color:#bfbab0cc>,
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Create a stream
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> stream </span><span style=color:#f29668>= </span><span>core</span><span style=color:#f29668>::</span><span>mem</span><span style=color:#f29668>::</span><span>MaybeUninit</span><span style=color:#f29668>::</span><span>uninit()</span><span style=color:#f29668>.</span><span style=color:#f07178>assume_init</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuStreamCreate(
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> stream </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUstream</span><span style=color:#bfbab0cc>, 
+</span><span>        </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// allocate the results buffer in the device
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> input_len </span><span style=color:#f29668>= </span><span style=color:#f29718>4096 </span><span style=color:#f29668>/ </span><span>core</span><span style=color:#f29668>::</span><span>mem</span><span style=color:#f29668>::</span><span>size_of</span><span style=color:#f29668>::</span><span><</span><span style=color:#ff7733>u32</span><span>>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> inputs </span><span style=color:#f29668>= </span><span>allocate</span><span style=color:#f29668>::</span><span><</span><span style=color:#ff7733>u32</span><span>>(input_len)</span><span style=color:#bfbab0cc>; 
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> output_len </span><span style=color:#f29668>= </span><span style=color:#f29718>1024 </span><span style=color:#f29668>* </span><span style=color:#f29718>1024</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> outputs </span><span style=color:#f29668>= </span><span>allocate</span><span style=color:#f29668>::</span><span><</span><span style=color:#ff7733>u32</span><span>>(output_len)</span><span style=color:#bfbab0cc>; 
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// get the kernel function to call
+</span><span>    </span><span style=color:#ff7733>let</span><span> func_name </span><span style=color:#f29668>= </span><span>CString</span><span style=color:#f29668>::</span><span>new(</span><span style=color:#c2d94c>"my_kernel"</span><span>)</span><span style=color:#f29668>.</span><span style=color:#f07178>unwrap</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> func</span><span style=color:#bfbab0cc>:</span><span> CUfunction </span><span style=color:#f29668>= </span><span>core</span><span style=color:#f29668>::</span><span>ptr</span><span style=color:#f29668>::</span><span>null_mut()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuModuleGetFunction(
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> func </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut</span><span> CUfunction</span><span style=color:#bfbab0cc>, 
+</span><span>        module</span><span style=color:#bfbab0cc>, 
+</span><span>        func_name</span><span style=color:#f29668>.</span><span style=color:#f07178>as_ptr</span><span>()</span><span style=color:#bfbab0cc>,
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Run the kernel
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> args </span><span style=color:#f29668>= </span><span style=color:#f07178>vec!</span><span>[
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> inputs     </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut </span><span style=color:#f29668>_ as </span><span style=color:#ff7733>*mut c_void</span><span style=color:#bfbab0cc>, 
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> input_len  </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut </span><span style=color:#f29668>_ as </span><span style=color:#ff7733>*mut c_void</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> outputs    </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut </span><span style=color:#f29668>_ as </span><span style=color:#ff7733>*mut c_void</span><span style=color:#bfbab0cc>, 
+</span><span>        </span><span style=color:#f29668>&</span><span style=color:#ff7733>mut</span><span> output_len </span><span style=color:#f29668>as </span><span style=color:#ff7733>*mut </span><span style=color:#f29668>_ as </span><span style=color:#ff7733>*mut c_void</span><span style=color:#bfbab0cc>,
+</span><span>    ]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuLaunchKernel(
+</span><span>        func</span><span style=color:#bfbab0cc>, 
+</span><span>        </span><span style=color:#f29718>1024</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>1024</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>,
+</span><span>        stream</span><span style=color:#bfbab0cc>,
+</span><span>        args</span><span style=color:#f29668>.</span><span style=color:#f07178>as_mut_ptr</span><span>()</span><span style=color:#bfbab0cc>,
+</span><span>        core</span><span style=color:#f29668>::</span><span>ptr</span><span style=color:#f29668>::</span><span>null_mut()</span><span style=color:#bfbab0cc>,
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// wait for the gpu to finish
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuStreamSynchronize(stream)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Copy back the results from the device to the host
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> result_buffer </span><span style=color:#f29668>= </span><span style=color:#f07178>vec!</span><span>[</span><span style=color:#f29718>0_</span><span style=color:#ff7733>u32</span><span style=color:#bfbab0cc>;</span><span> output_len]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> error </span><span style=color:#f29668>=</span><span> cuMemcpyDtoH_v2(
+</span><span>        result_buffer</span><span style=color:#f29668>.</span><span style=color:#f07178>as_mut_ptr</span><span>() </span><span style=color:#f29668>as _</span><span style=color:#bfbab0cc>,
+</span><span>        outputs</span><span style=color:#bfbab0cc>,
+</span><span>        output_len </span><span style=color:#f29668>* </span><span>core</span><span style=color:#f29668>::</span><span>mem</span><span style=color:#f29668>::</span><span>size_of</span><span style=color:#f29668>::</span><span><</span><span style=color:#ff7733>u32</span><span>>()</span><span style=color:#bfbab0cc>,
+</span><span>    )</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(error</span><span style=color:#bfbab0cc>, </span><span>cudaError_enum</span><span style=color:#f29668>::</span><span style=color:#f29718>CUDA_SUCCESS</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// Print the results
+</span><span>    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>{:?}</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> result_buffer)</span><span style=color:#bfbab0cc>;
+</span><span>}}
+</span></code></pre><h2 id=putting-it-together-add-the-toolchain-with>Putting it together# add the toolchain with:</h2><pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=font-style:italic;color:#5c6773># Add the target to compile for PTX
+</span><span style=color:#ffb454>rustup</span><span> target add nvptx64-nvidia-cuda
+</span><span>
+</span><span style=font-style:italic;color:#5c6773># install the linker
+</span><span style=color:#ffb454>cargo</span><span> install ptx-linker</span><span style=color:#f29718> -f --version </span><span style=color:#c2d94c>">= 0.9"
+</span><span>
+</span><span style=font-style:italic;color:#5c6773># Compile the PTX file
+</span><span style=color:#ffb454>cargo</span><span> build</span><span style=color:#f29718> --release --manifest-path</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"gpu_code"</span><span style=color:#f29718> --target</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"nvptx64-nvidia-cuda"
+</span><span style=font-style:italic;color:#5c6773># Compile the cpu code, loading the compiled ptx
+</span><span style=color:#ffb454>cargo</span><span> run</span><span style=color:#f29718> --release --manifest-path</span><span style=color:#f29668>=</span><span style=color:#c2d94c>"cpu_code"
+</span></code></pre></section></article></main></div><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script async id=MathJax-script src=https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js></script>

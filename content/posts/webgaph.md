@@ -28,6 +28,24 @@ def read_fixed_length(data, n_bits):
 
 ### Unary
 Optimal for geometric distributions with \\(p = \frac{1}{2}\\), i.e. \\(P(x) = \left(\frac{1}{2}\right)^{x + 1}\\):
+
+<table>
+<thead>
+  <tr><th>Number</th><th>Code</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>1</td></tr>
+  <tr><td>1</td><td>01</td></tr>
+  <tr><td>2</td><td>001</td></tr>
+  <tr><td>3</td><td>0001</td></tr>
+  <tr><td>4</td><td>00001</td></tr>
+  <tr><td>5</td><td>000001</td></tr>
+  <tr><td>6</td><td>0000001</td></tr>
+  <tr><td>7</td><td>00000001</td></tr>
+  <tr><td>8</td><td>000000001</td></tr>
+</tbody>
+</table>
+
 ```python
 def write_unary(value):
     return "0" * value + "1"
@@ -39,7 +57,26 @@ def read_unary(data):
     res = len(data.ltim("0")) - len(data)
     return res, data[res + 1:]
 ```
-### Elias-Gamma
+
+### [Elias-Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding#Further_reading)
+
+<table>
+<thead>
+  <tr><th>Number</th><th>Code</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>1</td></tr>
+  <tr><td>1</td><td>01 0</td></tr>
+  <tr><td>2</td><td>01 1</td></tr>
+  <tr><td>3</td><td>001 00</td></tr>
+  <tr><td>4</td><td>001 01</td></tr>
+  <tr><td>5</td><td>001 10</td></tr>
+  <tr><td>6</td><td>001 11</td></tr>
+  <tr><td>7</td><td>0001 000</td></tr>
+  <tr><td>8</td><td>0001 001</td></tr>
+</tbody>
+</table>
+
 ```python
 from math import floor, ceil, log2
 
@@ -63,7 +100,25 @@ def read_gamma(data):
     v = f + (1 << l) - 1
     return v, data
 ```
-### Elias-Delta
+### [Elias-Delta](https://en.wikipedia.org/wiki/Elias_delta_coding)
+
+<table>
+<thead>
+  <tr><th>Number</th><th>Code</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>1</td></tr>
+  <tr><td>1</td><td>01 0 0</td></tr>
+  <tr><td>2</td><td>01 1 1</td></tr>
+  <tr><td>3</td><td>01 10 0</td></tr>
+  <tr><td>4</td><td>01 10 1</td></tr>
+  <tr><td>5</td><td>01 11 0</td></tr>
+  <tr><td>6</td><td>01 11 1</td></tr>
+  <tr><td>7</td><td>0001 00 000</td></tr>
+  <tr><td>8</td><td>0001 00 001</td></tr>
+</tbody>
+</table>
+
 ```python
 from math import floor, ceil, log2
 
@@ -89,7 +144,7 @@ def read_delta(data):
     return v, data
 ```
 
-### Truncated Binary Encoding
+### [Truncated Binary Encoding](https://en.wikipedia.org/wiki/Truncated_binary_encoding)
 ```python
 from math import floor, ceil, log2
 
@@ -126,7 +181,7 @@ def read_minimal_binary(data, max):
         return v - limit, data
 ```
 
-### Zeta
+### [Zeta](https://vigna.di.unimi.it/ftp/papers/Codes.pdf)
 ```python
 from math import floor, ceil, log2
 
