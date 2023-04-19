@@ -47,3 +47,48 @@ html {
     font-size: 18px;
   }
 }
+
+.tag {
+  border-radius: 4px;
+  padding-top: 1px;
+  padding-bottom: 1px; 
+  padding-left: 4px;
+  padding-right: 4px;
+  margin-left: 1px;
+}
+
+.tag_reference_offset {
+  background-color:#4E79A780;
+}
+
+.tag_degree {
+  background-color:#F28E2B80;
+}
+
+.tag_nintervals {
+  background-color:#E1575980;
+}
+
+.tag_interval_start {
+  background-color:#76B7B280;
+}
+
+.tag_interval_len {
+  background-color:#59A14F80;
+}
+
+.tag_first_residual {
+  background-color:#EDC94880;
+}
+
+.tag_residual_gap {
+  background-color:#B07AA180;
+}
+
+.tag_blocks_count {
+  background-color:#FF9DA780;
+}
+
+.tag_blocks {
+  background-color:#9C755F80;
+}
