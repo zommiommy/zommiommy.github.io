@@ -10,11 +10,11 @@ All bit sequences will be read from left to right, from top to bottom.
 For ease of reading I will be using the convention that **all codes start from 0** 
 by adding a +1 where needed. This differs from the **book definitions** of the codes,
 but it's how you practically implement them.
-## Entropy
-
-# Instantaneous Codes
-
-### Intended Distributions
+## [Entropy](https://en.wikipedia.org/wiki/Entropy_(information_theory))
+## Intended Distributions
+## [Prefix code](https://en.wikipedia.org/wiki/Prefix_code)
+## [Universal code](https://en.wikipedia.org/wiki/Universal_code_(data_compression))
+# Codes
 
 ### Fixed length
 Optimal for uniform distributions of values in \\(\left[0, 2^\text{n_bits}\right)\\): 
@@ -274,3 +274,17 @@ And after applying all the needed +1, -1 and nat -> signed converstions, we have
 </table>
 
 # Benchmarks
+
+# References
+- [https://vigna.di.unimi.it/algoweb/WebGraph.pdf]
+- [https://webgraph.di.unimi.it/]
+- [https://vigna.di.unimi.it/ftp/papers/Codes.pdf]
+- [https://www.ics.uci.edu/~djp3/classes/2008_01_01_INF141/Materials/p595-boldi.pdf]
+- [https://github.com/vigna/webgraph]
+- [https://github.com/vigna/webgraph-rs]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson1.pdf]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson2.pdf]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-1.pdf]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-2.pdf]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-1.pdf]
+- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-2.pdf]

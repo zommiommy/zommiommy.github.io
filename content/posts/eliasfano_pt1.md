@@ -188,8 +188,6 @@ For a given tuple \\((i, x_i)\\) we now that we are going to set the high-bit \\
 A proper implemetation requires a precise use of atomic instructions, but it's possible to create the index in parallel
 which can greatley speedup the loading.
 
-**See you in the next posts for the details on how to encode a graph and then how to implement it efficently**
-
 # References
 - <https://core.ac.uk/download/pdf/79617357.pdf>
 - <https://web.archive.org/web/20160312010342/https://www.computer.org/csdl/proceedings/focs/1989/1982/00/063533.pdf>
