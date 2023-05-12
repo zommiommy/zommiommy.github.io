@@ -56,8 +56,10 @@ features = ["extension-module", "abi3-py36"]
 > Python doesn't directly expose a way to create modules in Rust.
 > Python can only be extended through a shared library which will be loaded and executed as if it was builtin Python code.
 > We are going to use Rust t
-> So we are going to use the [C functions](https://docs.python.org/3/extending/extending.html) through a library called [`Pyo3`](https://pyo3.rs/v0.17.3/) that will help us reduce the writing overhead, but it's completely optional.
-> https://peps.python.org/pep-0387/
+
+The first thing to do is to add [`crate-type = ["cdylib"]`](https://doc.rust-lang.org/reference/linkage.html) to the `Cargo.toml` file, so that rust will produce a
+ compiled shared library (a `.so`, `.dylib`, `.dll`) like the ones we would get if we were to compile C code. 
+Also we are going to add `pyo3` as a bindings helper to produce a valid python library. The line `features = ["extension-module", "abi3-py36"]` tells `Pyo3` to just use the [stable ABI](https://docs.python.org/3/c-api/stable.html) so that the compiled library will be compatible with any python version >= 3.6.> https://peps.python.org/pep-0387/
 
 ### Base setup
 
