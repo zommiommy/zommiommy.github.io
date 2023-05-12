@@ -81,7 +81,7 @@ The [IEEE 754 floats](https://en.wikipedia.org/wiki/IEEE_754), we use and love e
 ![](https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Float_example.svg/1024px-Float_example.svg.png)
 
 where a value is decoded as:
-\\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{127 + \text{exponent}}\\]
+\\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{\text{exponent} - 127}\\]
 
 So with a bit of bit trickery we can directly build the value with just a sum and a shift:
 

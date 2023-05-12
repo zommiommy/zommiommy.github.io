@@ -77,7 +77,7 @@ to optimize this simple but fundamental operation.&lt;&#x2F;p&gt;
 &lt;p&gt;The &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;IEEE_754&quot;&gt;IEEE 754 floats&lt;&#x2F;a&gt;, we use and love everyday, represents values as:
 &lt;img src=&quot;https:&#x2F;&#x2F;upload.wikimedia.org&#x2F;wikipedia&#x2F;commons&#x2F;thumb&#x2F;d&#x2F;d2&#x2F;Float_example.svg&#x2F;1024px-Float_example.svg.png&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
 &lt;p&gt;where a value is decoded as:
-\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{127 + \text{exponent}}\]&lt;&#x2F;p&gt;
+\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{\text{exponent} - 127}\]&lt;&#x2F;p&gt;
 &lt;p&gt;So with a bit of bit trickery we can directly build the value with just a sum and a shift:&lt;&#x2F;p&gt;
 &lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
