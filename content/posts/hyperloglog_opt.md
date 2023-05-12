@@ -4,19 +4,29 @@ description = "Different tecniques I used to speed up our implementation of Hype
 date = 2023-05-12
 +++
 
-### HyperLogLog
+# HyperLogLog
 
-HyperLogLog counters are a smart way to **estimate** the number of **uniques** 
+[HyperLogLog counters](https://en.wikipedia.org/wiki/HyperLogLog) are a smart way to **estimate** the number of **uniques** 
 elements seen in a stream. They exploit the fact that the number \(N\) of leading 
 (or trailing) zeros (or ones), on a random number follows a geometric 
 distribution of parameter \\(p = \frac{1}{2}\\), i.e.:
 
 \\[P(N = n) \propto \frac{1}{2^{n}}\\]
 
-The jist of the LogLog counters is to use an hash function on the values and 
-keep track of the maximum number of leading zeros.
+The jist of the HyperLogLog counters is to use an hash function on the values and 
+keep track of the maximum number of leading zeros. 
+To be more resiliant to outliers, multiple buckets are used.
+The first few bits are used to pick in which bucket each hashed value belongs to. 
+In order to compute the caradinality estimate, we take the [**harmonic mean**](https://en.wikipedia.org/wiki/Harmonic_mean)
+of the value of each bucket:
+
+\\[|C| \approx \left( \sum_i \frac{1}{2^{x_i}} \right)^{-1}\\]
+
+In this post I'll explore the different implementations I experimented with
+to optimize this simple but fundamental operation.
 
 ### Naive implementation
+This is the simplest way to compute it.
 ```rust
 let mut total: f32 = 0.0;
 for value in values {
