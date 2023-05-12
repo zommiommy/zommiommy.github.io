@@ -273,18 +273,16 @@ And after applying all the needed +1, -1 and nat -> signed converstions, we have
 </tbody>
 </table>
 
-# Benchmarks
-
 # References
-- [https://vigna.di.unimi.it/algoweb/WebGraph.pdf]
-- [https://webgraph.di.unimi.it/]
-- [https://vigna.di.unimi.it/ftp/papers/Codes.pdf]
-- [https://www.ics.uci.edu/~djp3/classes/2008_01_01_INF141/Materials/p595-boldi.pdf]
-- [https://github.com/vigna/webgraph]
-- [https://github.com/vigna/webgraph-rs]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson1.pdf]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson2.pdf]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-1.pdf]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-2.pdf]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-1.pdf]
-- [https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-2.pdf]
+- <https://vigna.di.unimi.it/algoweb/WebGraph.pdf>
+- <https://webgraph.di.unimi.it/>
+- <https://vigna.di.unimi.it/ftp/papers/Codes.pdf>
+- <https://www.ics.uci.edu/~djp3/classes/2008_01_01_INF141/Materials/p595-boldi.pdf>
+- <https://github.com/vigna/webgraph>
+- <https://github.com/vigna/webgraph-rs>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson1.pdf>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson2.pdf>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-1.pdf>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-2.pdf>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-1.pdf>
+- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-2.pdf>

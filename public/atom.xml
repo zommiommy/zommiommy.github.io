@@ -379,21 +379,20 @@ And after applying all the needed +1, -1 and nat -&gt; signed converstions, we h
   &lt;tr&gt;&lt;td class=&quot;tag tag_residual_gap&quot;&gt;ResidualGap&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
-&lt;h1 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h1&gt;
 &lt;h1 id=&quot;references&quot;&gt;References&lt;&#x2F;h1&gt;
 &lt;ul&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf]&lt;&#x2F;li&gt;
-&lt;li&gt;[https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf]&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&quot;&gt;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&quot;&gt;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;&#x2F;ul&gt;
 </content>
         
