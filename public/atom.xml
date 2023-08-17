@@ -142,8 +142,8 @@ This allows us to compute the exact result with no loss of resolution and furthe
         <author>
           <name>Unknown</name>
         </author>
-        <link rel="alternate" href="https://zom.wtf/posts/webgaph/" type="text/html"/>
-        <id>https://zom.wtf/posts/webgaph/</id>
+        <link rel="alternate" href="https://zom.wtf/posts/webgraph/" type="text/html"/>
+        <id>https://zom.wtf/posts/webgraph/</id>
         
         <content type="html">&lt;h1 id=&quot;introduction&quot;&gt;Introduction&lt;&#x2F;h1&gt;
 &lt;h1 id=&quot;theoretical-preliminaries&quot;&gt;Theoretical preliminaries&lt;&#x2F;h1&gt;
@@ -151,21 +151,131 @@ This allows us to compute the exact result with no loss of resolution and furthe
 For ease of reading I will be using the convention that &lt;strong&gt;all codes start from 0&lt;&#x2F;strong&gt; 
 by adding a +1 where needed. This differs from the &lt;strong&gt;book definitions&lt;&#x2F;strong&gt; of the codes,
 but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
-&lt;h2 id=&quot;entropy&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Entropy_(information_theory)&quot;&gt;Entropy&lt;&#x2F;a&gt;&lt;&#x2F;h2&gt;
-&lt;h2 id=&quot;intended-distributions&quot;&gt;Intended Distributions&lt;&#x2F;h2&gt;
-&lt;h2 id=&quot;prefix-code&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Prefix_code&quot;&gt;Prefix code&lt;&#x2F;a&gt;&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;information&quot;&gt;Information&lt;&#x2F;h2&gt;
+&lt;p&gt;Information is define by the following axioms:&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;The infomration \(I(p)\) of an event with probaility \(p\) is a monotone decreasing function of \(p\), i.e. \(p \le q \implies I(p) \ge I(q)\)&lt;&#x2F;li&gt;
+&lt;li&gt;\(I(1) = 0\): The information content of a certain event is 0&lt;&#x2F;li&gt;
+&lt;li&gt;Information is additive, i.e. the information of two independent events is the sum of the information of each event. \(I(p \cup q) = I(p) + I(q)\)&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;The only function that satisfies these axioms is:
+\[I(p) = -\log_2 p\]&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;example&quot;&gt;Example&lt;&#x2F;h4&gt;
+&lt;p&gt;A simple way to derive the information function for a discrete uniform distribution is the following:&lt;&#x2F;p&gt;
+&lt;p&gt;Using \(n\) bits we can store \(2^n\) different values.
+We can invert this relationship as: a set of \(N = 2^n\) values with uniform probability has \(I(p) = \log_2 N = n\) bits of information.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;We use uniform probability because we don&#x27;t know anything about the data.&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;By definition, each value in the set has probability \(p = \frac{1}{N}\) so \(N = \frac{1}{p}\),
+so we can rewrite the information as:
+\[I(p) = -\log_2 \frac{1}{p} = -\log_2 p\] &lt;&#x2F;p&gt;
+&lt;p&gt;which is exactly the definition of Information.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;entropy&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Entropy_(information_theory)&quot;&gt;Entropy&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;em&gt;The entropy is the expected information.&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;Given a probability distribution \(p: S \to [0, 1]\) with support \(S\), the entropy of \(p\) in bits is defined as:
+\[\mathbb{H}(p) = -\sum_{s \in S} p(s) \log_2 p(s) = \mathbb{E}_p[-\log_2 p]\]&lt;&#x2F;p&gt;
+&lt;p&gt;The entropy is a measure of the uncertainty of a random variable, it&#x27;s maximized when all the values are equally likely and minimized when the distribution is a delta function i.e. one value has probability 1 while the other have probability 0.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;For our use cases, the entropy is the minimum number of bits needed to store a value extracted from a distribution.&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;instantaneous-code&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Prefix_code&quot;&gt;Instantaneous code&lt;&#x2F;a&gt;&lt;&#x2F;h2&gt;
+&lt;p&gt;An instantaneous (binary) code (a.k.a. prefix-free code) for the set \(S\) is a function \(c : S \to {0, 1}^*\) such that, for all \(x, y \in S\), if \(c(x)\) is a prefix of \(c(y)\), then \(x = y\).&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;This implies that there is one unique way of decoding a given sequence&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Kraft%E2%80%93McMillan_inequality&quot;&gt;&lt;strong&gt;Kraft-McMillan&lt;&#x2F;strong&gt;&lt;&#x2F;a&gt; tell us that there exists an instantaneous code with lengths \(|c(s)|\) (\(s \in S\)) if, and only if:
+\[\sum_{s \in S} 2^{-|c(s)|} \le 1\] &lt;&#x2F;p&gt;
+&lt;p&gt;where \(l_s = |c(s)|\) is the length in bits of the code \(c(s)\) for value \(s \in S\).&lt;&#x2F;p&gt;
+&lt;p&gt;A &lt;strong&gt;complete&lt;&#x2F;strong&gt; code is an instantaneous code where:
+\[\sum_{s \in S} 2^{-l_s} = 1\] &lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;A complete code means that there are no unused codewords.&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;Furthermore, the expected length of \(c\) with respect to some probability
+distribution \(p: S \to [0, 1]\) with support \(S\) is:&lt;&#x2F;p&gt;
+&lt;p&gt;\[\mathbb{E}_p[|c|] = \sum_{s \in S} p(s) |c(s)|\]&lt;&#x2F;p&gt;
+&lt;p&gt;it follows that the &lt;strong&gt;optimal&lt;&#x2F;strong&gt; code \(c^*_p\) for a givend probability distribution \(P\) is the instantaneous code with minimum expected length.&lt;&#x2F;p&gt;
+&lt;p&gt;If \(S\) is finite, Shannon&#x27;s coding theorem tells us that the minimum expected length is the entropy of the distribution \(\mathbb{H}[p]\): 
+\[\mathbb{E}_p[|c^*_p|] = \mathbb{H}(p)\]&lt;&#x2F;p&gt;
+&lt;p&gt;moreover, the Huffman encoding is &lt;strong&gt;optimal&lt;&#x2F;strong&gt;.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;intended-distribution&quot;&gt;Intended distribution&lt;&#x2F;h3&gt;
+&lt;p&gt;Using the same equation for the expected lenght we can also compute the &lt;strong&gt;intended distribution&lt;&#x2F;strong&gt; i.e. the probability \(p\) that minimize the expected length \(\mathbb{E}_p[|c|]\) for a given code \(c\).&lt;&#x2F;p&gt;
+&lt;p&gt;We can derive the intended distribution starting from:
+\[\mathbb{E}_p[|c^*_p|] = \mathbb{H}(p)\]
+by applying the respective defenitions:
+\[\sum_{s \ in S} p(s) |c(s)| = \sum_{s \in S} -p(s) \log_2 p(s)\]
+a way to make this holds is to impose that the inner terms of the sum must be equal:
+\[\forall s \in S \quad p(s) |c(s)| = -p(s) \log_2 p(s)\]
+we can factor out the common \(p(s)\) term (assuming it&#x27;s not 0, in which case the equation still holds):
+\[\forall s \quad |c(s)| = -\log_2 p(s)\] 
+and finally we can derive \(p(s)\):
+\[\forall s \quad p(s) = 2^{-|c(x)|}\]&lt;&#x2F;p&gt;
+&lt;p&gt;Thus, the intended distribution for \(c\) is:
+\[p(x) = 2^{-|c(x)|}\]&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;Note that this is a proper distribution if and only if the code is complete, otherwise it won&#x27;t sum to 1 and we would need some renormalization constant.&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;Therefore, to achieve best compression, &lt;strong&gt;we have to choose the code which intended distribution most closely match the data distribution&lt;&#x2F;strong&gt;.&lt;&#x2F;p&gt;
 &lt;h2 id=&quot;universal-code&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Universal_code_(data_compression)&quot;&gt;Universal code&lt;&#x2F;a&gt;&lt;&#x2F;h2&gt;
 &lt;h1 id=&quot;codes&quot;&gt;Codes&lt;&#x2F;h1&gt;
 &lt;h3 id=&quot;fixed-length&quot;&gt;Fixed length&lt;&#x2F;h3&gt;
-&lt;p&gt;Optimal for uniform distributions of values in \(\left[0, 2^\text{n_bits}\right)\): &lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#c2d94c;&quot;&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;{:0%sb}&lt;&#x2F;span&gt;&lt;span style=&quot;color:#c2d94c;&quot;&gt;&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;%&lt;&#x2F;span&gt;&lt;span&gt;n_bits)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;format&lt;&#x2F;span&gt;&lt;span&gt;(value)
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;(data[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;:&lt;&#x2F;span&gt;&lt;span&gt;n_bits]&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;2&lt;&#x2F;span&gt;&lt;span&gt;), data[n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;:&lt;&#x2F;span&gt;&lt;span&gt;]
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;It&#x27;s defined on a the set of values beween \(0\) and \(N\) (excluded) i.e. \(S = {0, 1, ..., N - 1}\), it reresents each element \(s \in S\) using \(\forall s \in S \quad |c(s)| = \lceil \log_2 N \rceil\) bits.&lt;&#x2F;p&gt;
+&lt;p&gt;Thus, the fixed length code is optimal for uniform distributions of values in \(\left[0, N\right)\) if, and only if, \(N\) is a power of two. &lt;&#x2F;p&gt;
+&lt;h4 id=&quot;example-for-n-4&quot;&gt;Example for N = 4&lt;&#x2F;h4&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;td&gt;00&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;01&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;td&gt;10&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;td&gt;11&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;p&gt;&lt;em&gt;Note that any other permutation of bits is also valid.&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;example-for-n-8&quot;&gt;Example for N = 8&lt;&#x2F;h4&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;td&gt;000&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;001&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;td&gt;010&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;td&gt;011&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;4&lt;&#x2F;td&gt;&lt;td&gt;100&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;5&lt;&#x2F;td&gt;&lt;td&gt;101&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;6&lt;&#x2F;td&gt;&lt;td&gt;110&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;7&lt;&#x2F;td&gt;&lt;td&gt;111&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;h3 id=&quot;truncated-binary-encoding&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Truncated_binary_encoding&quot;&gt;Truncated Binary Encoding&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
+&lt;p&gt;also known as minimal binary encoding, us used for uniform distributions where \(N\) is not a power of two.&lt;&#x2F;p&gt;
+&lt;p&gt;The core idea is that we can write with \(\lfloor \log_2 N \rfloor\) bits the first \(2^{\lfloor \log_2 N \rfloor}\) values i.e. the up to the biggest power of two smaller than \(N\), and the remaining \(N - 2^{\lfloor \log_2 N \rfloor}\) values using \(\lceil \log_2 N \rceil\) bits.&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;example-for-n-6&quot;&gt;Example for N = 6&lt;&#x2F;h4&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;td&gt;00&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;01&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;td&gt;10&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;td&gt;11&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;4&lt;&#x2F;td&gt;&lt;td&gt;100&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;5&lt;&#x2F;td&gt;&lt;td&gt;101&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;p&gt;&lt;strong&gt;Note: this is not instantaneous! 2 is a prefix of 4 and 5! We will deal with this later.&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;This is &lt;strong&gt;close to be optimal&lt;&#x2F;strong&gt;, as the expected code length is:
+\[\mathbb{E}[|c|] = \frac{2^{\lfloor \log_2 N \rfloor}}{N} \lfloor \log_2 N \rfloor \; + \; \left(1 - \frac{2^{\lfloor \log_2 N \rfloor}}{N} \right) \lceil \log_2 N \rceil \]&lt;&#x2F;p&gt;
+&lt;p&gt;while the entropy is:
+\[\mathbb{H}[p] = \sum_{s \in S} -\frac{1}{N} \log_2 \frac{1}{N} = \log_2 N\]&lt;&#x2F;p&gt;
+&lt;p&gt;If we define \(\alpha = \frac{2^{\lfloor \log_2 N \rfloor}}{N}\) we can notice that
+the expected length is the convex combination of \(\lfloor \log_2 N \rfloor\) and \(\lceil \log_2 N \rceil\):&lt;&#x2F;p&gt;
+&lt;p&gt;\[\mathbb{E}[|c|] = \alpha \lfloor \log_2 N \rfloor \; + \; \left(1 - \alpha \right) \lceil \log_2 N \rceil \]&lt;&#x2F;p&gt;
+&lt;p&gt;When \(N\) is a power of two this is equivalent to the fixed length and is optimal because:
+\[\mathbb{E}[|c|] = \lfloor \log_2 N \rfloor = \log_2 N = \lceil \log_2 N \rceil\]&lt;&#x2F;p&gt;
+&lt;p&gt;Otherwise, by definition, a convex combination will only take cavlues between its
+extremes \(\lfloor \log_2 N \rfloor\) and \(\lceil \log_2 N \rceil\) so the
+truncated binary encoding is always smaller or equal than the fixed length.&lt;&#x2F;p&gt;
 &lt;h3 id=&quot;unary&quot;&gt;Unary&lt;&#x2F;h3&gt;
-&lt;p&gt;Optimal for geometric distributions with \(p = \frac{1}{2}\), i.e. \(P(x) = \left(\frac{1}{2}\right)^{x + 1}\):&lt;&#x2F;p&gt;
+&lt;p&gt;We can write any positive number \(s \in \mathbb{N} \) as a sequence of \(s\) zeros followed by a one, which act as a terminator.&lt;&#x2F;p&gt;
+&lt;p&gt;This code has length \(s + 1\) therefore, its intended distribution is:
+\[p(x) = \left(\frac{1}{2}\right)^{x + 1}\]&lt;&#x2F;p&gt;
+&lt;p&gt;Thus, it&#x27;s optimal for geometric distributions with \(p = \frac{1}{2}\).&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -182,17 +292,11 @@ but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
   &lt;tr&gt;&lt;td&gt;8&lt;&#x2F;td&gt;&lt;td&gt;000000001&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_unary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#c2d94c;&quot;&gt;&amp;quot;0&amp;quot; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;* &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#c2d94c;&quot;&gt;&amp;quot;1&amp;quot;
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;len_unary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_unary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;len&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;ltim&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#c2d94c;&quot;&gt;&amp;quot;0&amp;quot;&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;len&lt;&#x2F;span&gt;&lt;span&gt;(data)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;res, data[res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;:&lt;&#x2F;span&gt;&lt;span&gt;]
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Most modern CPUs architectures, like x86_64 and Aarch64 (Arm), have instructions
+to compute the leading or traling zeros in a registers. Using these we can decode
+unary codes in 1 ns on average. &lt;&#x2F;p&gt;
 &lt;h3 id=&quot;elias-gamma&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Elias_gamma_coding#Further_reading&quot;&gt;Elias-Gamma&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
+&lt;p&gt;Unary + Fixed Length&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -209,29 +313,10 @@ but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
   &lt;tr&gt;&lt;td&gt;8&lt;&#x2F;td&gt;&lt;td&gt;0001 001&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;from &lt;&#x2F;span&gt;&lt;span&gt;math &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;floor&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;ceil&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;log2
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_gamma&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(value))
-&lt;&#x2F;span&gt;&lt;span&gt;    s &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_unary&lt;&#x2F;span&gt;&lt;span&gt;(l&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;bitstream&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;m2l)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;!= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(s&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;v
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;len_gamma&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;2&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_gamma&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_unary&lt;&#x2F;span&gt;&lt;span&gt;(data)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;== &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, data
-&lt;&#x2F;span&gt;&lt;span&gt;    f, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;f &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;l) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;v, data
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
 &lt;h3 id=&quot;elias-delta&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Elias_delta_coding&quot;&gt;Elias-Delta&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
+&lt;p&gt;What happens if we write the fixed length part of gamma, using another gamma?&lt;&#x2F;p&gt;
+&lt;p&gt;MEME: Oh boy here I go recursing again
+MEME: I heard you like gamma, so I put another gamma inside your gamma&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -248,65 +333,24 @@ but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
   &lt;tr&gt;&lt;td&gt;8&lt;&#x2F;td&gt;&lt;td&gt;0001 00 001&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;from &lt;&#x2F;span&gt;&lt;span&gt;math &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;floor&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;ceil&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;log2
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_delta&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(value))
-&lt;&#x2F;span&gt;&lt;span&gt;    s &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_gamma&lt;&#x2F;span&gt;&lt;span&gt;(l&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;bitstream&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;m2l)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;!= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(s&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;data
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;len_delta&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;))
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;2&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;*&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_delta&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_gamma&lt;&#x2F;span&gt;&lt;span&gt;(data)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;== &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;, data
-&lt;&#x2F;span&gt;&lt;span&gt;    f, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;f &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;l) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;v, data
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h3 id=&quot;truncated-binary-encoding&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Truncated_binary_encoding&quot;&gt;Truncated Binary Encoding&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;from &lt;&#x2F;span&gt;&lt;span&gt;math &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;floor&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;ceil&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;log2
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_minimal_binary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;))) 
-&lt;&#x2F;span&gt;&lt;span&gt;    limit &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;(l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;limit:
-&lt;&#x2F;span&gt;&lt;span&gt;        data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;else&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        to_write &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span&gt;limit
-&lt;&#x2F;span&gt;&lt;span&gt;        data  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(to_write &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;        data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(to_write &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;data
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;len_minimal_binary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;)))
-&lt;&#x2F;span&gt;&lt;span&gt;    limit &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;(l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;= &lt;&#x2F;span&gt;&lt;span&gt;limit:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;else&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;l
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_minimal_binary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;floor&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;log2&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span&gt;)))
-&lt;&#x2F;span&gt;&lt;span&gt;    v, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;l)
-&lt;&#x2F;span&gt;&lt;span&gt;    limit &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;(l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;max
-&lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt; &lt;&#x2F;span&gt;&lt;span&gt;limit:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;v, data
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;else&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        b, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_fixed_length&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;n_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)
-&lt;&#x2F;span&gt;&lt;span&gt;        v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span&gt;b
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;v &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span&gt;limit, data
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;golomb&quot;&gt;Golomb&lt;&#x2F;h3&gt;
+&lt;p&gt;for a given b, write \(\lfloor \sfrac{s}{b} \rfloor \) in unary and 
+\(s mod b\) using fixed lenght (or truncated encoding)&lt;&#x2F;p&gt;
+&lt;p&gt;The length is \(|c(s)| = \left \lfloor \frac{s}{b} \right \rfloor + \lceil \log_2 b \rceil\) thus, its &lt;&#x2F;p&gt;
+&lt;p&gt;For a Geometric distribution of ratio \(p\) we can compute the \(b\) so that
+the Golomb code is optimal:
+\[b = \left \lceil \frac{\log_2 (2 - p)}{-\log(1 - p)} \right \rceil\]&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;vbytes&quot;&gt;VBytes&lt;&#x2F;h3&gt;
+&lt;p&gt;This code, in its variation LEB128 is really common as it&#x27;s present in both
+DWARF format and Webassembly binary format.&lt;&#x2F;p&gt;
+&lt;p&gt;Byte-aligned &lt;&#x2F;p&gt;
+&lt;p&gt;write 7 bits and use the highest to set 0 if continue 1 if stop.&lt;&#x2F;p&gt;
+&lt;p&gt;The faster variation is to have all the 0s at the start, so basically writing the number of bytes - 1 in unary at the start.&lt;&#x2F;p&gt;
+&lt;p&gt;LEB128 is not complete and redundant as it has infinite encodings for each number
+as we can just add 0 padding on the top. Moreover, if a value uses 2 bytes we know that it must be bigger than 127, so we can subtract it to fit more values, and this
+can be done recursively.&lt;&#x2F;p&gt;
 &lt;h3 id=&quot;zeta&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&quot;&gt;Zeta&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
+&lt;p&gt;Unary + Truncated Encoding&lt;&#x2F;p&gt;
 &lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;from &lt;&#x2F;span&gt;&lt;span&gt;math &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;import &lt;&#x2F;span&gt;&lt;span&gt;floor&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;ceil&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span&gt;log2
 &lt;&#x2F;span&gt;&lt;span&gt;
 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;write_zeta&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;k&lt;&#x2F;span&gt;&lt;span&gt;):
@@ -334,7 +378,15 @@ but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
 &lt;&#x2F;span&gt;&lt;span&gt;    r, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_minimal_binary&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;u &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span&gt;l)
 &lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span&gt;r &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;, data
 &lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h1 id=&quot;encoding-of-negative-numbers&quot;&gt;Encoding of negative numbers&lt;&#x2F;h1&gt;
+&lt;h2 id=&quot;encoding-of-negative-numbers&quot;&gt;Encoding of negative numbers&lt;&#x2F;h2&gt;
+&lt;p&gt;All the discussed codes are defined over some subset of \(\mathbb{N}\), to 
+encode over \(\mathbb{Z}\), we have to define a bijection \(\phi: \mathbb{Z} \to \mathbb{N}\).&lt;&#x2F;p&gt;
+&lt;p&gt;If we can assume that the values form some kind of bell shape centered around zero,
+as we often do, it&#x27;s best to map values with small absolute value to small integers, so it&#x27;s natural to use the following bijection:&lt;&#x2F;p&gt;
+&lt;p&gt;\[\phi(x) =  \left\{\begin{matrix} -2 x &amp;amp; \text{if } x \le 0\\2 x - 1 &amp;amp; \text{otherwise}\end{matrix}\right.\]
+which has inverse:
+\[\phi^{-1}(x) =  \left\{\begin{matrix} -x &#x2F; 2 &amp;amp; \text{if } x = 0 \mod 2\\ (x + 1) &#x2F; 2 &amp;amp; \text{otherwise}\end{matrix}\right.\]&lt;&#x2F;p&gt;
+&lt;p&gt;this can be efficiently implemented as:&lt;&#x2F;p&gt;
 &lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;nat2int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;x&lt;&#x2F;span&gt;&lt;span&gt;):
 &lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;^ ~&lt;&#x2F;span&gt;&lt;span&gt;((x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)
 &lt;&#x2F;span&gt;&lt;span&gt;
@@ -344,8 +396,43 @@ but it&#x27;s how you practically implement them.&lt;&#x2F;p&gt;
 &lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;else&lt;&#x2F;span&gt;&lt;span&gt;:
 &lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
 &lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h1 id=&quot;webgraph&quot;&gt;Webgraph&lt;&#x2F;h1&gt;
-&lt;h2 id=&quot;example&quot;&gt;Example&lt;&#x2F;h2&gt;
+&lt;p&gt;which in x86_64 assembly should look like:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; int2nat
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; rax = x
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;shl &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rbx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; x &amp;lt;&amp;lt; 1 = 2 * x
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;cmp &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;adc &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; nat2int
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;codes-summary&quot;&gt;Codes Summary&lt;&#x2F;h2&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;th&gt;Distribution&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;Fixed Length&lt;&#x2F;td&gt;&lt;td&gt;Uniform were N is a power of two&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Truncated&lt;&#x2F;td&gt;&lt;td&gt;Uniform&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Unary&lt;&#x2F;td&gt;&lt;td&gt;Geometric with p = \\(\frac{1}{2}\\)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Delta&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Zeta k = 3&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;h1 id=&quot;bvgraph&quot;&gt;BVGraph&lt;&#x2F;h1&gt;
+&lt;p&gt;BVGraph is a graph compression data-structure which exploits some common 
+properties of real-world graphs. The basic idea is to use instantaneous codes 
+to represent an adjacency list (a.k.a. CSR).&lt;&#x2F;p&gt;
+&lt;p&gt;The BVGraph format has three core compression methods:&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;A node can copy successors from a previous node&lt;&#x2F;li&gt;
+&lt;li&gt;Intervals of nodes with consecutive ids are written as the tuple (start, len)&lt;&#x2F;li&gt;
+&lt;li&gt;The remaning nodes are sorted and encoded as a sequence of gaps (differences between successive nodes).&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;We can already notice that this compression depends from the node ids. 
+Finding the optimal order is most likely NP Complete, so later in this post we 
+will discuss some heuristic methods to find good orders.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;example-1&quot;&gt;Example&lt;&#x2F;h2&gt;
 &lt;p&gt;&lt;img src=&quot;&#x2F;webgraph_graph.svg&quot; alt=&quot;&quot; &#x2F;&gt;
 Let&#x27;s start by computing the neighbours of each node:&lt;&#x2F;p&gt;
 &lt;pre style=&quot;background-color:#0f1419;color:#bfbab0;&quot;&gt;&lt;code&gt;&lt;span&gt;0: 1,2
@@ -371,6 +458,7 @@ And after applying all the needed +1, -1 and nat -&gt; signed converstions, we h
 &lt;span class=&quot;tag tag_degree&quot;&gt;2&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_first_residual&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_residual_gap&quot;&gt;2&lt;&#x2F;span&gt;
 &lt;&#x2F;div&gt;
 &lt;&#x2F;div&gt;
+&lt;p&gt;The default codes for BVGraph are:&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Value&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -387,6 +475,28 @@ And after applying all the needed +1, -1 and nat -&gt; signed converstions, we h
   &lt;tr&gt;&lt;td class=&quot;tag tag_residual_gap&quot;&gt;ResidualGap&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
+&lt;h2 id=&quot;compression-tradeoffs&quot;&gt;Compression tradeoffs&lt;&#x2F;h2&gt;
+&lt;p&gt;Compression windows, Reference chain length&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;offsets-list&quot;&gt;Offsets list&lt;&#x2F;h2&gt;
+&lt;p&gt;To have have random-access on a BVGraph bitstream we need to store the bitoffsets
+at which each node codes start, analogously to the offsets list of a CSR matrix.&lt;&#x2F;p&gt;
+&lt;p&gt;While this could just be a vector of integers, we can notice that the offsets are
+a monotone non decreasing sequence of positive integers, thus they can be 
+represented using Elias-Fano!&lt;&#x2F;p&gt;
+&lt;p&gt;For a BVGraph bitstream of length (l) of a graph with (|V|) nodes, Elias-Fano stores the offsets using at most \(|V| (2 + \lfloor \log2 \frac{l}{|V|} \rfloor)\) bits while having \(O(1)\) access (select). &lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;zom.wtf&#x2F;posts&#x2F;elias_fano_pt1&quot;&gt;&lt;em&gt;See my other post for more info on Elias-Fano&lt;&#x2F;em&gt;&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;how-to-choose-the-best-codes&quot;&gt;How to choose the best codes?&lt;&#x2F;h2&gt;
+&lt;p&gt;Use universal codes, gamma is really fast so it&#x27;s a good default choice.
+Otherwise we can &amp;quot;simulate&amp;quot; writing every piece with all the codes, this requires
+just a complete iteration over the nodes so it&#x27;s feasible also on large graphs.&lt;&#x2F;p&gt;
+&lt;p&gt;Webgraph-rs allows has an optimized binary utility for this.&lt;&#x2F;p&gt;
+&lt;p&gt;In my practical application we don&#x27;t save much memory, about 3 GB over a 126GB graph,
+but we found out that zeta3 and delta have similar compressions, so we use delta which is 4 times faster than zeta3.&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;computing-an-order&quot;&gt;Computing an order&lt;&#x2F;h1&gt;
+&lt;h2 id=&quot;bfs&quot;&gt;BFS&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;layered-labels-propagation&quot;&gt;Layered Labels Propagation&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;benchmarks-1&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
 &lt;h1 id=&quot;references&quot;&gt;References&lt;&#x2F;h1&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
@@ -395,6 +505,7 @@ And after applying all the needed +1, -1 and nat -&gt; signed converstions, we h
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&quot;&gt;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
