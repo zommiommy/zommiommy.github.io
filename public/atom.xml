@@ -4,148 +4,251 @@
     <link href="https://zom.wtf/atom.xml" rel="self" type="application/atom+xml"/>
     <link href="https://zom.wtf"/>
     <generator uri="https://www.getzola.org/">Zola</generator>
-    <updated>2023-05-12T00:00:00+00:00</updated>
+    <updated>2023-09-25T00:00:00+00:00</updated>
     <id>https://zom.wtf/atom.xml</id>
     <entry xml:lang="en">
-        <title>Optimizing HyperLogLog</title>
-        <published>2023-05-12T00:00:00+00:00</published>
-        <updated>2023-05-12T00:00:00+00:00</updated>
+        <title>Webgraph from scratch: BVGraph (Draft)</title>
+        <published>2023-09-25T00:00:00+00:00</published>
+        <updated>2023-09-25T00:00:00+00:00</updated>
         <author>
           <name>Unknown</name>
         </author>
-        <link rel="alternate" href="https://zom.wtf/posts/hyperloglog-opt/" type="text/html"/>
-        <id>https://zom.wtf/posts/hyperloglog-opt/</id>
+        <link rel="alternate" href="https://zom.wtf/posts/webgraph-bvgraph/" type="text/html"/>
+        <id>https://zom.wtf/posts/webgraph-bvgraph/</id>
         
-        <content type="html">&lt;h1 id=&quot;hyperloglog&quot;&gt;HyperLogLog&lt;&#x2F;h1&gt;
-&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;HyperLogLog&quot;&gt;HyperLogLog counters&lt;&#x2F;a&gt; are a smart way to &lt;strong&gt;estimate&lt;&#x2F;strong&gt; the number of &lt;strong&gt;uniques&lt;&#x2F;strong&gt; 
-elements seen in a stream. They exploit the fact that the number (N) of leading 
-(or trailing) zeros (or ones), on a random number follows a geometric 
-distribution of parameter \(p = \frac{1}{2}\), i.e.:&lt;&#x2F;p&gt;
-&lt;p&gt;\[P(N = n) \propto \frac{1}{2^{n}}\]&lt;&#x2F;p&gt;
-&lt;p&gt;The jist of the HyperLogLog counters is to use an hash function on the values and 
-keep track of the maximum number of leading zeros. 
-To be more resiliant to outliers, multiple buckets are used.
-The first few bits are used to pick in which bucket each hashed value belongs to. 
-In order to compute the caradinality estimate, we take the &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Harmonic_mean&quot;&gt;&lt;strong&gt;harmonic mean&lt;&#x2F;strong&gt;&lt;&#x2F;a&gt;
-of the value of each bucket:&lt;&#x2F;p&gt;
-&lt;p&gt;\[|C| \approx \left( \sum_i \frac{1}{2^{x_i}} \right)^{-1}\]&lt;&#x2F;p&gt;
-&lt;p&gt;In this post I&#x27;ll explore the different implementations I experimented with
-to optimize this simple but fundamental operation.&lt;&#x2F;p&gt;
-&lt;h3 id=&quot;naive-implementation&quot;&gt;Naive implementation&lt;&#x2F;h3&gt;
-&lt;p&gt;This is the simplest way to compute it.&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
-&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1.0 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&#x2F; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;2.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;powf&lt;&#x2F;span&gt;&lt;span&gt;(value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;}
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r14 &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r15&lt;&#x2F;span&gt;&lt;span&gt;],&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;    ; Load `value` from `values`
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vmovss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;dword ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rip &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;.TWO&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load 2.0
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;call   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r12&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;                           ; Call ldexpf -&amp;gt; xmm0 = 2.0^values
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vmovss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;dword ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rip &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;.ONE&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load 1.0
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vdivss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; 1.0 &#x2F; 2.0^value
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;vadds  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; total +=
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h3 id=&quot;avoiding-the-call-to-ldexpf&quot;&gt;Avoiding the call to ldexpf&lt;&#x2F;h3&gt;
-&lt;p&gt;Having a call in the function adds a lot of overhead so we can avoid it this way:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
-&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1.0 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&#x2F; &lt;&#x2F;span&gt;&lt;span&gt;((&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;&lt;&#x2F;span&gt;&lt;span&gt; value) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;}
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; Load `value` from `values`
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;mov   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; 1
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;shlx  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;e8d&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;       ; 1 &amp;lt;&amp;lt; value ;  3 cycles
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vcvtsi2ss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm3&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; as f32     ;  8 cycles
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vdivss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; 1.0 &#x2F;      ; 18 cycles
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; total +=   ;  3 cycles
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h3 id=&quot;avoiding-divisions&quot;&gt;Avoiding Divisions&lt;&#x2F;h3&gt;
-&lt;p&gt;One way to avoid division is to pre-compute all the values and look them. Assuming that the table in in the L1 Cache we can avoid the division and the conversion to f32, trading 18 + 8 = 26 cycles for a memory read which is about 10 cycles.&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
-&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;RECIPROCALS_TABLE&lt;&#x2F;span&gt;&lt;span&gt;[value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;usize&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;}
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load `value` from `values`
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movd &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r12 &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; RECIPROCALS_TABLE ; ~10 cycles 
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; total +=          ;   3 cycles
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h3 id=&quot;ieee-754-tricks&quot;&gt;IEEE 754 tricks&lt;&#x2F;h3&gt;
-&lt;p&gt;The &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;IEEE_754&quot;&gt;IEEE 754 floats&lt;&#x2F;a&gt;, we use and love everyday, represents values as:
-&lt;img src=&quot;https:&#x2F;&#x2F;upload.wikimedia.org&#x2F;wikipedia&#x2F;commons&#x2F;thumb&#x2F;d&#x2F;d2&#x2F;Float_example.svg&#x2F;1024px-Float_example.svg.png&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
-&lt;p&gt;where a value is decoded as:
-\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{\text{exponent} - 127}\]&lt;&#x2F;p&gt;
-&lt;p&gt;So with a bit of bit trickery we can directly build the value with just a sum and a shift:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; hack &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;127 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;::&lt;&#x2F;span&gt;&lt;span&gt;from_ne_bytes(hack&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;to_ne_bytes&lt;&#x2F;span&gt;&lt;span&gt;())&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;}
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; Load `value` from `values`
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;shl   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;             ; &amp;lt;&amp;lt; 23         ; 1 cycle
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;add &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;ecx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1065353216&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;       ; + (127 &amp;lt;&amp;lt; 23) ; 1 cycle
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movd &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;ecx&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;            ; as f32        ; 3 cycles
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; total +=      ; 3 cycles
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h3 id=&quot;fixed-point-for-precision-and-profit&quot;&gt;Fixed point for precision and profit&lt;&#x2F;h3&gt;
-&lt;p&gt;If we assume that the values are less or equal than 32, we can use an u64 word as a &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Fixed-point_arithmetic&quot;&gt;fixed point precision&lt;&#x2F;a&gt; value with 32 decimal bits.
-This allows us to compute the exact result with no loss of resolution and further speed up the code.&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; counter&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
-&lt;&#x2F;span&gt;&lt;span&gt;    counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1_&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span&gt; value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;}
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; exp &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; counter&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;leading_zeros&lt;&#x2F;span&gt;&lt;span&gt;() &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;=&lt;&#x2F;span&gt;&lt;span&gt; exp&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span&gt;counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(((&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;127 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;-&lt;&#x2F;span&gt;&lt;span&gt; exp) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span&gt;(counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; estimate &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;::&lt;&#x2F;span&gt;&lt;span&gt;from_ne_bytes(res&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;to_ne_bytes&lt;&#x2F;span&gt;&lt;span&gt;())&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;esi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; Load `value` from `values`
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;shrx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rcx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;          ; &amp;lt;&amp;lt;         ; 3 cycles
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;add &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;                ; counter += ; 1 cycle
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h2 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
-&lt;p&gt;Computing the sum of 10&#x27;000 elements (between 0 and 32) on my &lt;code&gt;Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz&lt;&#x2F;code&gt;&lt;&#x2F;p&gt;
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Impl&lt;&#x2F;th&gt;&lt;th&gt;ns &#x2F; element&lt;&#x2F;th&gt;&lt;th&gt;speedup&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
-&lt;tr&gt;&lt;td&gt;naive&lt;&#x2F;td&gt;&lt;td&gt;9.2354&lt;&#x2F;td&gt;&lt;td&gt;&#x2F;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;no call&lt;&#x2F;td&gt;&lt;td&gt;1.4025&lt;&#x2F;td&gt;&lt;td&gt;6.58&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;table&lt;&#x2F;td&gt;&lt;td&gt;1.1763&lt;&#x2F;td&gt;&lt;td&gt;7.85&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;IEE 754&lt;&#x2F;td&gt;&lt;td&gt;1.1586&lt;&#x2F;td&gt;&lt;td&gt;7.97&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;Fixed Point&lt;&#x2F;td&gt;&lt;td&gt;0.5693&lt;&#x2F;td&gt;&lt;td&gt;16.22&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
-&lt;p&gt;And compiling with &lt;code&gt;RUSTFLAGS=&amp;quot;-C target-cpu=native&amp;quot;&lt;&#x2F;code&gt; we get:&lt;&#x2F;p&gt;
-&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Impl&lt;&#x2F;th&gt;&lt;th&gt;ns &#x2F; element&lt;&#x2F;th&gt;&lt;th&gt;speedup&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
-&lt;tr&gt;&lt;td&gt;naive&lt;&#x2F;td&gt;&lt;td&gt;8.3358&lt;&#x2F;td&gt;&lt;td&gt;&#x2F;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;no call&lt;&#x2F;td&gt;&lt;td&gt;1.2977&lt;&#x2F;td&gt;&lt;td&gt;6.42&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;table&lt;&#x2F;td&gt;&lt;td&gt;1.1572&lt;&#x2F;td&gt;&lt;td&gt;7.20&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;IEE 754&lt;&#x2F;td&gt;&lt;td&gt;1.1303&lt;&#x2F;td&gt;&lt;td&gt;7.37&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;tr&gt;&lt;td&gt;Fixed Point&lt;&#x2F;td&gt;&lt;td&gt;0.1351&lt;&#x2F;td&gt;&lt;td&gt;61.7&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
-&lt;h2 id=&quot;reference&quot;&gt;Reference&lt;&#x2F;h2&gt;
+        <content type="html">&lt;p&gt;&lt;em&gt;This post assumes familiarity with the instantaneous codes we discussed in &lt;a href=&quot;&#x2F;posts&#x2F;webgraph-codes&quot;&gt;the previous post&lt;&#x2F;a&gt;&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;bvgraph&quot;&gt;BVGraph&lt;&#x2F;h1&gt;
+&lt;p&gt;BVGraph is a graph compression data-structure which exploits some common 
+properties of real-world graphs. The basic idea is to use instantaneous codes 
+to represent an adjacency list (a.k.a. CSR).&lt;&#x2F;p&gt;
+&lt;p&gt;The BVGraph format has three core compression methods:&lt;&#x2F;p&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;gist.github.com&#x2F;zommiommy&#x2F;f6a42d8c7c59826f45aa1c0cef687c1a&quot;&gt;Code for benchmarks&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;godbolt.org&#x2F;#z:OYLghAFBqd5QCxAYwPYBMCmBRdBLAF1QCcAaPECAMzwBtMA7AQwFtMQByARg9KtQYEAysib0QXACx8BBAKoBnTAAUAHpwAMvAFYTStJg1DEArgoKkl9ZATwDKjdAGFUtEywYgAzADZSjgBk8BkwAOXcAI0xiEEkADlIAB1QFQjsGFzcPbz9k1NsBIJDwliiY%2BMtMawKGIQImYgJM909fSur0uoaCIrDI6NiE827m7Lbhxt6SssGASktUE2Jkdg4AUg0AQUSTCIBqKgY9gDcuCGOxE0wFED21gCYfNYBWACETOJeAEVm9gFo1l5sAcvPc7gB2V4bTZ7WF7egEPYsEyIoj1Wi3Kigu5eL57DQAOg0gKhWzhBxIJ0umD2wSpbmuENJMPJcLRYju9yhuL2XCJewA9Ht7kSAPpYkXJADuVAgACoLgy9kwFCD7rMSdDyWtwV8tWzUOjoTq9VtjVsdvtDid7udqTdOU83h9vr8AUC1Uz9bCEUiUXt2RjPYC8YTiV5meT%2BMR6VdaUdFVdVTrI6zYYHOdy8XyNIK9lAuDinICnHsFdTfiq1RqI96IaaWenDWJjbrzdtdgcE147QyHQ8ne9Ps8fv9AcCJV6yXDfcjUc2g5OQ&#x2F;iiZrp7Do7GaXTE4yU3XyRmHlm9gAlbBOACSylPAHknJsAkJRQAVTavALYF6vctKqtmPAAC9MG%2BNdG3rOtA1bBtoUtLsTkkXsk1uAdvxdEc3XHYNITrWd&#x2F;UDTFsWXMMwKjSld3jLdkxw9dWV9BAmGQABrHE8QgLh7nBTMywo&#x2F;9QV%2BEsS2FLxSLTAMF0zZcJRAEAqGIVAWFFEJRQiABPAhrggBjmIJIglMwFT1M02Ya1TWETUghdoPbODrWOZ4kOuFDHjQ4dR3dCciJo8C8MRNATEEAY9hMHxJFY&#x2F;FRI3cjqUo3dqLM1l&#x2F;MCmNj2XdjRRCsLBK8Ut%2BJxL8PV&#x2F;K5Iog2jfUwVREnCpKNOIAl6CYfAjFFYD5IUCABK5XkSpq6Ii2yvEKsSHrFmS&#x2F;Lx2XUL&#x2F;mEkrfWIPceSgdjOO47E&#x2F;j2IbK1VEw8uy0t7i8ATwVLCBepjPj1RK6TZPkxTlLUjT2vmhRdNQfTDMejqNTNNszS2NAGHMM8L2vO8HyfV930&#x2F;ZzBwlb5wtQt46xzUg60JZ5Udowl7gxtGCQ43GsaJHwccx8Cwy8AmyfJMMuGeEnCfJokNHBOIqbxjQNC8ABODQGepuEww0LhueeSnSY5znufBHx6YlonOY0eI4nuNn5aZxX7kkSQpD59WaeZ4X7nuFmufZ2ifHxrnnjphnMD%2BDRGfJLwiRt8FnlZgn7cdgXYT5Z4cbiVnebth2nbhcECRJ7meckMWvYdvw6xdtnJB8aXHjl55vaT2i%2BV58EvHiHxQTV7PE99vZuYJMWfHBSRKdCvXy5ZyvJAJGW4i8cE6ZVs2ce98FK5FLw4h1uIPe5rhhazwfK75EWTe51XReeFmy7nutngJbmfCV0LJHBd2eb5rxvYSOsRW5uINAO43R5l0XxfP%2BeCUkXmuC4HxP5jseZfpl%2BdZI5x0djfZ4u9l6j1Vt7bmlcXbghxvcXmSCx7fynpIGBr84gk1Cjbd%2BB0NCi3BJgus1dKaghxvXb%2BzxD4T3ttPNuUd6bf1VoXFmhcY70I0MPAkpcvB8wbrLUe6cS5cNfl&#x2F;HWYt7hcBVunIubMxFbwJH3GWe8p5FzrjrehXAeFTy5l3JW9NC7dyVto1%2BccbZTwDqrXwPgJ73DMUAgknFwEe2&#x2F;uPIujx6H3DgVHbu0s4g33BIQrgPcz5&#x2F;A4lgmR19uaSGtnHCestvGV2roQ9%2Bh9hZHyQarBxESvCMJofXQua9AmhVClweh%2BTL7OMLoXOuNCG53z5pU8RvhsFdyyV&#x2F;L%2BXMWlKLsQ3ce2CNA3xvrkqQPCx7SOCbE&#x2F;hcS4kVIidIZGb9pHDMKXTE2JtTGLMrpHaeNDOJeDccLTmYzw6whds8AOYS66BM5mvBZdNX5HxLvTLusTTlr3Lk8uscRlFs1ZjraWnMCZjNzuBdu2thnL0IRPTmOD6HgvJCKY2Ss05K2XmvchiLxHT3vrfNOONbbfKRXCbeVzP50w4uLD2Xd6FD2qUfK5Ht6a2xXlIelr8H5HyDkE1OcdiERIZRbHeo84gx15ifBB0CIkX1oi7NOsTFWWNrhy2Vzyi4IM1eAzuLN6FyvAn8uuvhQn%2BMCXEo59DYF1nbl4Npwy7Hc1iSbGRVqeFfzHkrIu78e5Szdcs4ZkhNmhK1hPNe2t&#x2F;VmhHCSDg8wMQcGeLwTwHAtCkFQJwU8ZhEQKEWMsGkDxKa8AIJoWN8wmIgBtjvZ4KstY0P4TfWJGN42SF4CwCQnNSDJtTemjgvAbjcOLSm2NpA4CwCQGgFgiQ6DRHIJQCdU76AxAYHgYACACC0FUqQLAxw8ArAAGp4EwFKW8iRGCcB4HwOgtUbgQAiCW0gERggNFUue3gj7mDEFUreCI2hMA2FfaQCdbBBC3gYBu%2B9WAWCGGAOIIdW68DzRsHgY4Tk4MVT&#x2F;SiVYF7ggaXjam2geAIjEGfS4LA96CDEDwG27gw6qAGGAAoA9R6T1npozIQQIgxDsHGfwQQigVDqDg7oHRBgjAgFMOYfQhGbiQHmKgRINQbgcD%2BKWeTBA&#x2F;j0BQ7QEMXh&#x2F;hOHqMQYAmB1PIB2CGBQTFVIGCYpgPtVQ&#x2F;01AcAwZwrgWjeHyYEYIfRSgDC1kPPIaQBCjFaPkgLNQpj9BiH59oDnOgGaaK5sY%2BSrCxYEF0SYXnpi%2BcPpYeLwX3O5e6BFnzUXD7zBzUsFYEg42cETZ2%2B9Pa9gSYIMgPYy7V3rtUvmXAhBKQFq4LMItJb5haRAIsAgOwLAUFOgpBd0RQisFWM11r7W10bt4JgfARBKPoD0Lx4QohxA8dkPxtQ97hOkClMRxIw39C1aTQ1zgt4USTb2KgKgTWs0rZXWtrrEAXCTunSlA6A2htDpMqQct8QiQ6yZXHdOItHZNs4C20gbbp7cK7bwHtfaQADuGzVjg9wHtwZx6QQdWgIcoeIKkewkggA%3D%3D%3D&quot;&gt;Code on Godbolt&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;A node can copy successors from a previous node&lt;&#x2F;li&gt;
+&lt;li&gt;Intervals of nodes with consecutive ids are written as the tuple (start, len)&lt;&#x2F;li&gt;
+&lt;li&gt;The remaning nodes are sorted and encoded as a sequence of gaps (differences between successive nodes).&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;We can already notice that this compression depends from the node ids. 
+Finding the optimal order is most likely NP Complete, so later in this post we 
+will discuss some heuristic methods to find good orders.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;example&quot;&gt;Example&lt;&#x2F;h2&gt;
+&lt;p&gt;Let&#x27;s start with a simple graph:
+&lt;img src=&quot;&#x2F;bvgraph_graph.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;I&#x27;ve compressed it with the default codes, which are:&lt;&#x2F;p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Value&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_degree&quot;&gt;Outdegree&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_reference_offset&quot;&gt;ReferenceOffset&lt;&#x2F;td&gt;&lt;td&gt;Unary&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_blocks_count&quot;&gt;BlockCount&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_blocks&quot;&gt;Blocks&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_nintervals&quot;&gt;IntervalCount&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_interval_start&quot;&gt;IntervalStart&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_interval_len&quot;&gt;IntervalLen&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_first_residual&quot;&gt;FirstResidual&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td class=&quot;tag tag_residual_gap&quot;&gt;ResidualGap&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;p&gt;This graph has 9 nodes and 12 arcs, once compressed with BVGraph we obtain two
+files, the &lt;code&gt;test.properties&lt;&#x2F;code&gt;:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;ini&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-ini &quot;&gt;&lt;code class=&quot;language-ini&quot; data-lang=&quot;ini&quot;&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;#BVGraph properties
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;version&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;graphclass&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;it&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;unimi&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;dsi&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;webgraph&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;BVGraph
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;nodes&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;9
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;arcs&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;12
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;minintervallength&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;3
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;maxrefcount&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;3
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;windowsize&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;7
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;zetak&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;3
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;compressionflags&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;and the &lt;code&gt;test.graph&lt;&#x2F;code&gt; file which contains the compressed graph as the following bytes:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#0f1419;color:#bfbab0;&quot;&gt;&lt;code&gt;&lt;span&gt;7d c5 ea 64 a7 27 72 97 a9 e0
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;which is equivalent to the bits:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#0f1419;color:#bfbab0;&quot;&gt;&lt;code&gt;&lt;span&gt;01111101 11000101 11101010 01100100 10100111 00100111 01110010 10010111 10101001 11100000
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;and is equivalent to the bitstream:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#0f1419;color:#bfbab0;&quot;&gt;&lt;code&gt;&lt;span&gt;011111011100010111101010011001001010011100100111011100101001011110101001111
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;With syntax highlighting:&lt;&#x2F;p&gt;
+&lt;div&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;100&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1101&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;01&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_blocks_count&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;00100&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_interval_start&quot;&gt;011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_interval_len&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;00100&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;100&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;1010&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1101&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;01&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_blocks_count&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;&#x2F;div&gt;
+Reading the codes we obtain:
+&lt;div&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;2&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;2&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;4&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_blocks_count&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;3&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_interval_start&quot;&gt;2&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_interval_len&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;3&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;2&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;4&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_blocks_count&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;span&gt;|&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_degree&quot;&gt;0&lt;&#x2F;span&gt;
+&lt;&#x2F;div&gt;
+&lt;p&gt;Finally, we can start iterating on the graph:&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Node 0&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;div&gt;
+Bits: &lt;span class=&quot;tag tag_degree&quot;&gt;011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1011&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_residual_gap&quot;&gt;100&lt;&#x2F;span&gt;&lt;br&gt;
+Outdegree: &lt;span class=&quot;tag tag_degree&quot;&gt;2&lt;&#x2F;span&gt;&lt;br&gt;
+Reference Offset: &lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;&lt;br&gt;
+Number of Intervals: &lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;&lt;br&gt;
+First Residual: &lt;span class=&quot;tag tag_first_residual&quot;&gt;2&lt;&#x2F;span&gt;&lt;br&gt;
+Residual Gap: &lt;span class=&quot;tag tag_residual_gap&quot;&gt;0&lt;&#x2F;span&gt;&lt;br&gt;
+&lt;&#x2F;div&gt;
+&lt;p&gt;This node has outdegree 2, doesn&#x27;t copy any node and has no intervals, so it has
+only residuals. &lt;&#x2F;p&gt;
+&lt;p&gt;The first residual is a signed offset from the current node,
+so the first successor is \(0 + \phi^{-1}(2) = 0 + 1 = 1\).&lt;&#x2F;p&gt;
+&lt;p&gt;The second residual is the gap from the previous residual, minus one, so:
+\(1 + (0 + 1) = 2\).&lt;&#x2F;p&gt;
+&lt;p&gt;So the successors of node 0 are \(\{1, 2\}\).&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Node 1&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;div&gt;
+Bits: 
+&lt;span class=&quot;tag tag_degree&quot;&gt;010&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;
+&lt;span class=&quot;tag tag_first_residual&quot;&gt;1101&lt;&#x2F;span&gt;&lt;br&gt;
+Outdegree: &lt;span class=&quot;tag tag_degree&quot;&gt;1&lt;&#x2F;span&gt;&lt;br&gt;
+Reference Offset: &lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;&lt;br&gt;
+Number of Intervals: &lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;&lt;br&gt;
+First Residual: &lt;span class=&quot;tag tag_first_residual&quot;&gt;4&lt;&#x2F;span&gt;&lt;br&gt;
+&lt;&#x2F;div&gt;
+&lt;p&gt;This node has outdegree 1, doesn&#x27;t copy any node and has no intervals, so it has
+only residuals. &lt;&#x2F;p&gt;
+&lt;p&gt;The first residual is a signed offset from the current node,
+so the first successor is \(0 + \phi^{-1}(4) = 1 + 2 = 3\).&lt;&#x2F;p&gt;
+&lt;p&gt;So the successors of node 1 are \(\{3\}\).&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;compression-tradeoffs&quot;&gt;Compression tradeoffs&lt;&#x2F;h2&gt;
+&lt;p&gt;Compression windows, Reference chain length&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;offsets-list&quot;&gt;Offsets list&lt;&#x2F;h2&gt;
+&lt;p&gt;To have have random-access on a BVGraph bitstream we need to store the bitoffsets
+at which each node codes start, analogously to the offsets list of a CSR matrix.&lt;&#x2F;p&gt;
+&lt;p&gt;While this could just be a vector of integers, we can notice that the offsets are
+a monotone non decreasing sequence of positive integers, thus they can be 
+represented using Elias-Fano!&lt;&#x2F;p&gt;
+&lt;p&gt;For a BVGraph bitstream of length (l) of a graph with (|V|) nodes, Elias-Fano stores the offsets using at most \(|V| (2 + \lfloor \log2 \frac{l}{|V|} \rfloor)\) bits while having \(O(1)\) access (select) if paired with an appropriate index.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;zom.wtf&#x2F;posts&#x2F;elias_fano_pt1&quot;&gt;&lt;em&gt;See my other post for more info on Elias-Fano&lt;&#x2F;em&gt;&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;how-to-choose-the-best-codes&quot;&gt;How to choose the best codes?&lt;&#x2F;h2&gt;
+&lt;p&gt;Use universal codes, gamma is really fast so it&#x27;s a good default choice.
+Otherwise we can &amp;quot;simulate&amp;quot; writing every piece with all the codes, this requires
+just a complete iteration over the nodes so it&#x27;s feasible also on large graphs.&lt;&#x2F;p&gt;
+&lt;p&gt;Webgraph-rs has an optimized binary utility for this.&lt;&#x2F;p&gt;
+&lt;p&gt;In my practical application we don&#x27;t save much memory, about 3 GB over a 126GB graph,
+but we found out that zeta3 and delta have similar compressions, so we use delta which is 4 times faster than zeta3.&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;computing-an-order&quot;&gt;Computing an order&lt;&#x2F;h1&gt;
+&lt;h2 id=&quot;bfs&quot;&gt;BFS&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;layered-labels-propagation&quot;&gt;Layered Labels Propagation&lt;&#x2F;h2&gt;
+&lt;h2 id=&quot;benchmarks-1&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
+&lt;h1 id=&quot;references&quot;&gt;References&lt;&#x2F;h1&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&quot;&gt;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&quot;&gt;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;&#x2F;ul&gt;
 </content>
         
     </entry>
     <entry xml:lang="en">
-        <title>Webgraph from scratch (Draft)</title>
-        <published>2023-04-19T00:00:00+00:00</published>
-        <updated>2023-04-19T00:00:00+00:00</updated>
+        <title>Webgraph from scratch: Instantaneous Codes (Draft)</title>
+        <published>2023-09-24T00:00:00+00:00</published>
+        <updated>2023-09-24T00:00:00+00:00</updated>
         <author>
           <name>Unknown</name>
         </author>
-        <link rel="alternate" href="https://zom.wtf/posts/webgraph/" type="text/html"/>
-        <id>https://zom.wtf/posts/webgraph/</id>
+        <link rel="alternate" href="https://zom.wtf/posts/webgraph-codes/" type="text/html"/>
+        <id>https://zom.wtf/posts/webgraph-codes/</id>
         
         <content type="html">&lt;h1 id=&quot;introduction&quot;&gt;Introduction&lt;&#x2F;h1&gt;
+&lt;p&gt;This post is a collection of notes I took and benchmarks I run while implementing and optimizing &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;dsi-bitstream-rs&quot;&gt;dsi-bitstream-rs&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
 &lt;h1 id=&quot;theoretical-preliminaries&quot;&gt;Theoretical preliminaries&lt;&#x2F;h1&gt;
 &lt;p&gt;All bit sequences will be read from left to right, from top to bottom.
 For ease of reading I will be using the convention that &lt;strong&gt;all codes start from 0&lt;&#x2F;strong&gt; 
@@ -273,9 +376,7 @@ extremes \(\lfloor \log_2 N \rfloor\) and \(\lceil \log_2 N \rceil\) so the
 truncated binary encoding is always smaller or equal than the fixed length.&lt;&#x2F;p&gt;
 &lt;h3 id=&quot;unary&quot;&gt;Unary&lt;&#x2F;h3&gt;
 &lt;p&gt;We can write any positive number \(s \in \mathbb{N} \) as a sequence of \(s\) zeros followed by a one, which act as a terminator.&lt;&#x2F;p&gt;
-&lt;p&gt;This code has length \(s + 1\) therefore, its intended distribution is:
-\[p(x) = \left(\frac{1}{2}\right)^{x + 1}\]&lt;&#x2F;p&gt;
-&lt;p&gt;Thus, it&#x27;s optimal for geometric distributions with \(p = \frac{1}{2}\).&lt;&#x2F;p&gt;
+&lt;p&gt;\[s \to \overbrace{00...00}^\text{s} 1 = 0^s 1\]&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -292,9 +393,13 @@ truncated binary encoding is always smaller or equal than the fixed length.&lt;&
   &lt;tr&gt;&lt;td&gt;8&lt;&#x2F;td&gt;&lt;td&gt;000000001&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
+&lt;p&gt;This code has length \(s + 1\) therefore, its intended distribution is:
+\[p(x) = \left(\frac{1}{2}\right)^{s + 1}\]&lt;&#x2F;p&gt;
+&lt;p&gt;Thus, it&#x27;s optimal for the &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Geometric_distribution&quot;&gt;geometric distribution&lt;&#x2F;a&gt; with \(p = \frac{1}{2}\).&lt;&#x2F;p&gt;
 &lt;p&gt;Most modern CPUs architectures, like x86_64 and Aarch64 (Arm), have instructions
-to compute the leading or traling zeros in a registers. Using these we can decode
-unary codes in 1 ns on average. &lt;&#x2F;p&gt;
+to compute the leading or traling zeros in a registers. &lt;&#x2F;p&gt;
+&lt;p&gt;x86_64 has &lt;a href=&quot;https:&#x2F;&#x2F;www.felixcloutier.com&#x2F;x86&#x2F;lzcnt&quot;&gt;LZCNT&lt;&#x2F;a&gt; and &lt;a href=&quot;https:&#x2F;&#x2F;www.felixcloutier.com&#x2F;x86&#x2F;tzcnt&quot;&gt;TZCNT&lt;&#x2F;a&gt; instructions, while Aarch64 has only &lt;a href=&quot;https:&#x2F;&#x2F;developer.arm.com&#x2F;documentation&#x2F;dui0802&#x2F;b&#x2F;A32-and-T32-Instructions&#x2F;CLZ&quot;&gt;CLZ&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;Using these we can decode unary codes in 1 ns on average. &lt;&#x2F;p&gt;
 &lt;h3 id=&quot;elias-gamma&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Elias_gamma_coding#Further_reading&quot;&gt;Elias-Gamma&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
 &lt;p&gt;Unary + Fixed Length&lt;&#x2F;p&gt;
 &lt;table&gt;
@@ -314,9 +419,8 @@ unary codes in 1 ns on average. &lt;&#x2F;p&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
 &lt;h3 id=&quot;elias-delta&quot;&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Elias_delta_coding&quot;&gt;Elias-Delta&lt;&#x2F;a&gt;&lt;&#x2F;h3&gt;
-&lt;p&gt;What happens if we write the fixed length part of gamma, using another gamma?&lt;&#x2F;p&gt;
-&lt;p&gt;MEME: Oh boy here I go recursing again
-MEME: I heard you like gamma, so I put another gamma inside your gamma&lt;&#x2F;p&gt;
+&lt;p&gt;What happens if we write the unary part of gamma, using another gamma?&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;xkcd.com&#x2F;1270&#x2F;&quot;&gt;&lt;img src=&quot;https:&#x2F;&#x2F;imgs.xkcd.com&#x2F;comics&#x2F;functional.png&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
 &lt;table&gt;
 &lt;thead&gt;
   &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
@@ -334,8 +438,8 @@ MEME: I heard you like gamma, so I put another gamma inside your gamma&lt;&#x2F;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
 &lt;h3 id=&quot;golomb&quot;&gt;Golomb&lt;&#x2F;h3&gt;
-&lt;p&gt;for a given b, write \(\lfloor \sfrac{s}{b} \rfloor \) in unary and 
-\(s mod b\) using fixed lenght (or truncated encoding)&lt;&#x2F;p&gt;
+&lt;p&gt;for a given b, write \(\lfloor \frac{s}{b} \rfloor \) in unary and 
+\(s \mod b\) using truncated encoding.&lt;&#x2F;p&gt;
 &lt;p&gt;The length is \(|c(s)| = \left \lfloor \frac{s}{b} \right \rfloor + \lceil \log_2 b \rceil\) thus, its &lt;&#x2F;p&gt;
 &lt;p&gt;For a Geometric distribution of ratio \(p\) we can compute the \(b\) so that
 the Golomb code is optimal:
@@ -378,140 +482,362 @@ can be done recursively.&lt;&#x2F;p&gt;
 &lt;&#x2F;span&gt;&lt;span&gt;    r, data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_minimal_binary&lt;&#x2F;span&gt;&lt;span&gt;(data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;max&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt;u &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span&gt;l)
 &lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;l &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span&gt;r &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;, data
 &lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;Number&lt;&#x2F;th&gt;&lt;th&gt;Zeta1&lt;&#x2F;th&gt;&lt;th&gt;Zeta2&lt;&#x2F;th&gt;&lt;th&gt;Zeta3&lt;&#x2F;th&gt;&lt;th&gt;Zeta4&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;1 0&lt;&#x2F;td&gt;&lt;td&gt;1 00&lt;&#x2F;td&gt;&lt;td&gt;1 000&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;01 0&lt;&#x2F;td&gt;&lt;td&gt;1 10&lt;&#x2F;td&gt;&lt;td&gt;1 010&lt;&#x2F;td&gt;&lt;td&gt;1 0010&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;td&gt;01 1&lt;&#x2F;td&gt;&lt;td&gt;1 11&lt;&#x2F;td&gt;&lt;td&gt;1 011&lt;&#x2F;td&gt;&lt;td&gt;1 0011&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;td&gt;001 00&lt;&#x2F;td&gt;&lt;td&gt;01 000&lt;&#x2F;td&gt;&lt;td&gt;1 100&lt;&#x2F;td&gt;&lt;td&gt;1 0100&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;4&lt;&#x2F;td&gt;&lt;td&gt;001 01&lt;&#x2F;td&gt;&lt;td&gt;01 001&lt;&#x2F;td&gt;&lt;td&gt;1 101&lt;&#x2F;td&gt;&lt;td&gt;1 0101&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;5&lt;&#x2F;td&gt;&lt;td&gt;001 10&lt;&#x2F;td&gt;&lt;td&gt;01 010&lt;&#x2F;td&gt;&lt;td&gt;1 110&lt;&#x2F;td&gt;&lt;td&gt;1 0110&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;6&lt;&#x2F;td&gt;&lt;td&gt;001 11&lt;&#x2F;td&gt;&lt;td&gt;01 011&lt;&#x2F;td&gt;&lt;td&gt;1 111&lt;&#x2F;td&gt;&lt;td&gt;1 0111&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;7&lt;&#x2F;td&gt;&lt;td&gt;0001 000&lt;&#x2F;td&gt;&lt;td&gt;01 1000&lt;&#x2F;td&gt;&lt;td&gt;01 00000&lt;&#x2F;td&gt;&lt;td&gt;1 1000&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
+&lt;p&gt;&lt;em&gt;Note that Zeta1 == Gamma&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
 &lt;h2 id=&quot;encoding-of-negative-numbers&quot;&gt;Encoding of negative numbers&lt;&#x2F;h2&gt;
 &lt;p&gt;All the discussed codes are defined over some subset of \(\mathbb{N}\), to 
 encode over \(\mathbb{Z}\), we have to define a bijection \(\phi: \mathbb{Z} \to \mathbb{N}\).&lt;&#x2F;p&gt;
 &lt;p&gt;If we can assume that the values form some kind of bell shape centered around zero,
 as we often do, it&#x27;s best to map values with small absolute value to small integers, so it&#x27;s natural to use the following bijection:&lt;&#x2F;p&gt;
-&lt;p&gt;\[\phi(x) =  \left\{\begin{matrix} -2 x &amp;amp; \text{if } x \le 0\\2 x - 1 &amp;amp; \text{otherwise}\end{matrix}\right.\]
+&lt;p&gt;\[\phi(x) =  \left\{\begin{matrix} 2 x &amp;amp; \text{if } x \ge 0\\- 2 x - 1 &amp;amp; \text{otherwise}\end{matrix}\right.\]
 which has inverse:
-\[\phi^{-1}(x) =  \left\{\begin{matrix} -x &#x2F; 2 &amp;amp; \text{if } x = 0 \mod 2\\ (x + 1) &#x2F; 2 &amp;amp; \text{otherwise}\end{matrix}\right.\]&lt;&#x2F;p&gt;
+\[\phi^{-1}(x) =  \left\{\begin{matrix} x &#x2F; 2 &amp;amp; \text{if } x = 0 \mod 2\\ -(x + 1) &#x2F; 2 &amp;amp; \text{otherwise}\end{matrix}\right.\]&lt;&#x2F;p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+  &lt;tr&gt;&lt;th&gt;\(x \in \mathbb{N}\)&lt;&#x2F;th&gt;&lt;th&gt;\(\phi^{-1}(x) \in \mathbb{Z}\)&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;td&gt;0&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;td&gt;-1&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;td&gt;1&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;td&gt;-2&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;4&lt;&#x2F;td&gt;&lt;td&gt;2&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;5&lt;&#x2F;td&gt;&lt;td&gt;-3&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;6&lt;&#x2F;td&gt;&lt;td&gt;3&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;
+&lt;&#x2F;table&gt;
 &lt;p&gt;this can be efficiently implemented as:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;python&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-python &quot;&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;nat2int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;x&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;^ ~&lt;&#x2F;span&gt;&lt;span&gt;((x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;#&lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;inline&lt;&#x2F;span&gt;&lt;span&gt;]
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;pub const fn &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;int2nat&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;x&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;i64&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;-&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64 &lt;&#x2F;span&gt;&lt;span&gt;{
+&lt;&#x2F;span&gt;&lt;span&gt;    (x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;^ &lt;&#x2F;span&gt;&lt;span&gt;(x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;63&lt;&#x2F;span&gt;&lt;span&gt;)) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64
+&lt;&#x2F;span&gt;&lt;span&gt;}
 &lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;int2nat&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;x&lt;&#x2F;span&gt;&lt;span&gt;):
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span&gt;x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
-&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;else&lt;&#x2F;span&gt;&lt;span&gt;:
-&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span&gt;(x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;#&lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;inline&lt;&#x2F;span&gt;&lt;span&gt;]
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;pub const fn &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;nat2int&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;x&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;-&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;i64 &lt;&#x2F;span&gt;&lt;span&gt;{
+&lt;&#x2F;span&gt;&lt;span&gt;    ((x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;^ !&lt;&#x2F;span&gt;&lt;span&gt;((x &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;wrapping_sub&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;))) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;i64
+&lt;&#x2F;span&gt;&lt;span&gt;}
 &lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
 &lt;p&gt;which in x86_64 assembly should look like:&lt;&#x2F;p&gt;
-&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; int2nat
-&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; rax = x
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;shl &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rbx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; x &amp;lt;&amp;lt; 1 = 2 * x
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;cmp &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax
-&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;adc &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;int2n&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;at&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;:
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;sar     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;63
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;xor     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdi
 &lt;&#x2F;span&gt;&lt;span&gt;
-&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;; nat2int
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;nat2int:
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;and     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;shr     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;neg     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdi
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;xor     &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdi
 &lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;h2 id=&quot;codes-summary&quot;&gt;Codes Summary&lt;&#x2F;h2&gt;
+&lt;h1 id=&quot;reading-codes-fast&quot;&gt;Reading codes fast&lt;&#x2F;h1&gt;
+&lt;h3 id=&quot;bitorder-big-or-little-endian&quot;&gt;Bitorder, Big or Little endian?&lt;&#x2F;h3&gt;
+&lt;p&gt;We have to choose if for us the bit 0 of a byte is the Most Significant Bit (MSB) or the Least Significant Bit (LSB). Both have different pro and cons for performance, but the main difference is that MSB is the default in Java.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;buffering&quot;&gt;Buffering?&lt;&#x2F;h3&gt;
+&lt;p&gt;In this section, we&#x27;ll see the core ideas we had while implementing our rust crate for reading and wring bitstreams: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;dsi-bitstream-rs&quot;&gt;&lt;code&gt;dsi-bitstream-rs&lt;&#x2F;code&gt;&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;By definition, most codes we will read will take just a few bits so the idea is to have a buffer of 64 bits and read from it.
+This avoids having a memory access for each read, which is a common
+bottleneck. &lt;&#x2F;p&gt;
+&lt;p&gt;If we don&#x27;t allow reads over 32-bits, we can use a 64-bits buffer, so we know that there will always be space for the next read, and
+operations on 64-bits words are fast on most modern CPUS.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;pub struct &lt;&#x2F;span&gt;&lt;span style=&quot;color:#59c2ff;&quot;&gt;Reader&lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F;&#x2F; The buffer of bits we will read from
+&lt;&#x2F;span&gt;&lt;span&gt;    buffer&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64&lt;&#x2F;span&gt;&lt;span&gt;,
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F;&#x2F; how many bits are valid in the buffer
+&lt;&#x2F;span&gt;&lt;span&gt;    valid_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;usize&lt;&#x2F;span&gt;&lt;span&gt;,
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F;&#x2F; The data to read from
+&lt;&#x2F;span&gt;&lt;span&gt;    data&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt; [&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;]
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Now we have two possible convention, we can either read the bits in a byte from the Most Significant Bit to the Least Significant Bit or viceversa.&lt;&#x2F;p&gt;
+&lt;p&gt;MSB to LSB implies that we will have to read the data using BigEndian order of bytes, while LSB to MSB implies LittleEndian order.&lt;&#x2F;p&gt;
+&lt;p&gt;It&#x27;s not clear at priori which is the best choice, but we can easily implement both and benchmark them. In the following examples we will only discuss the Big Endian (MSB to LSB) version as is the default in the Java implementation of webgraph.&lt;&#x2F;p&gt;
+&lt;p&gt;Now let&#x27;s implement a method for how to read the next &lt;code&gt;bits&lt;&#x2F;code&gt; bits from the buffer:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;impl&lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#59c2ff;&quot;&gt;Reader&lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;pub fn &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_bits&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;mut &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;usize&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;-&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32 &lt;&#x2F;span&gt;&lt;span&gt;{
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;debug_assert!&lt;&#x2F;span&gt;&lt;span&gt;(bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; if there aren&amp;#39;t enough bits
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span&gt; bits {
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; read a new word and add it tot he buffer
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;|= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;] &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &amp;amp;&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;..&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        }
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; extract the lowest bits
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp; &lt;&#x2F;span&gt;&lt;span&gt;((&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;&lt;&#x2F;span&gt;&lt;span&gt; bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;-=&lt;&#x2F;span&gt;&lt;span&gt; bits&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        res
+&lt;&#x2F;span&gt;&lt;span&gt;    }
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;And now, how to read unary codes we can use rust&#x27;s &lt;code&gt;leaing_zeros&lt;&#x2F;code&gt; which uses the &lt;code&gt;lzcnt&lt;&#x2F;code&gt; instruction on x86_64 and &lt;code&gt;clz&lt;&#x2F;code&gt; on Aarch64, if the feature is enables.
+Otherwise Rust will generate the broadword code for it.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;impl&lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#59c2ff;&quot;&gt;Reader&lt;&#x2F;span&gt;&lt;span&gt;&amp;lt;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;&amp;#39;a&lt;&#x2F;span&gt;&lt;span&gt;&amp;gt; {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;pub fn &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;read_unary&lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;amp;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;mut &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;-&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;usize&lt;&#x2F;span&gt;&lt;span&gt;{
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;leading_zeros&lt;&#x2F;span&gt;&lt;span&gt;()&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; the unary code fits inside the valid bits
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;if&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits {
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;=&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;-=&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;            &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;return&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1
+&lt;&#x2F;span&gt;&lt;span&gt;        }
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; zeros&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; otherwise we have to read another word
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span&gt;] &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &amp;amp;&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;data[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;..&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;leading_zeros&lt;&#x2F;span&gt;&lt;span&gt;()&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; our assumption is that all unary and bits are under 32 bits
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;&#x2F;&#x2F; this is for simplicity, but it can be generalized
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;debug_assert!&lt;&#x2F;span&gt;&lt;span&gt;(zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;; 
+&lt;&#x2F;span&gt;&lt;span&gt;        res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+=&lt;&#x2F;span&gt;&lt;span&gt; zeros&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;valid_bits &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;-=&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        &lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#39bae6;&quot;&gt;self&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span&gt;buffer &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;=&lt;&#x2F;span&gt;&lt;span&gt; zeros &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;        res
+&lt;&#x2F;span&gt;&lt;span&gt;    } 
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;how-big-should-we-make-the-tables&quot;&gt;How big should we make the tables?&lt;&#x2F;h3&gt;
+&lt;p&gt;What&#x27;s the optimal size for tables?&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;merged-or-separated-tables&quot;&gt;Merged or separated tables?&lt;&#x2F;h3&gt;
+&lt;p&gt;Merged have better cache locality and a single memory access, but they are bigger than separated ones, due to
+padding.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;The answer to all these questions is to benchmark!&lt;&#x2F;strong&gt;&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h1&gt;
+&lt;p&gt;These benchmarks were run on a &lt;a href=&quot;https:&#x2F;&#x2F;en.wikichip.org&#x2F;wiki&#x2F;intel&#x2F;core_i7&#x2F;i7-8750h&quot;&gt;&lt;strong&gt;Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz&lt;&#x2F;strong&gt;&lt;&#x2F;a&gt;, the csv with the raw data can be found &lt;a href=&quot;&#x2F;codes&#x2F;read.csv&quot;&gt;here for reads&lt;&#x2F;a&gt; and &lt;a href=&quot;&#x2F;codes&#x2F;write.csv&quot;&gt;here for writes&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;To run these benchmarks on your own machine you can use the following command:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;bash&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-bash &quot;&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;# Clone the repo
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;git&lt;&#x2F;span&gt;&lt;span&gt; clone https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;dsi-bitstream-rs.git
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;cd&lt;&#x2F;span&gt;&lt;span&gt; dsi-bitstream-rs
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;# Run the read benchmarks
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;python3&lt;&#x2F;span&gt;&lt;span&gt; .&#x2F;python&#x2F;bench_code_tables_read.py &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span&gt; read.csv
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;# Make the plots
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;cat&lt;&#x2F;span&gt;&lt;span&gt; read.csv &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;python3&lt;&#x2F;span&gt;&lt;span&gt; .&#x2F;python&#x2F;plot_code_tables_read.py
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;# Run the write benchmarks
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;python3&lt;&#x2F;span&gt;&lt;span&gt; .&#x2F;python&#x2F;bench_code_tables_write.py &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span&gt; write.csv
+&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;# Make the plots
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;cat&lt;&#x2F;span&gt;&lt;span&gt; write.csv &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;python3&lt;&#x2F;span&gt;&lt;span&gt; .&#x2F;python&#x2F;plot_code_tables_write.py
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;read&quot;&gt;Read&lt;&#x2F;h2&gt;
+&lt;h4 id=&quot;fixed-length-1&quot;&gt;Fixed Length&lt;&#x2F;h4&gt;
+&lt;p&gt;TODO!:&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;truncated&quot;&gt;Truncated&lt;&#x2F;h4&gt;
+&lt;p&gt;TODO!:&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;unary-1&quot;&gt;Unary&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;unary_read_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;gamma&quot;&gt;Gamma&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;gamma_read_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;delta&quot;&gt;Delta&lt;&#x2F;h4&gt;
+&lt;p&gt;Since Delta has a gamma code inside, we can choose if the gamma code is read using a table or not.&lt;&#x2F;p&gt;
+&lt;p&gt;Without gamma table:
+&lt;img src=&quot;&#x2F;codes&#x2F;delta_read_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;
+With gamma table (8 bits):
+&lt;img src=&quot;&#x2F;codes&#x2F;delta_gamma_read_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;zeta-3&quot;&gt;Zeta 3&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;zeta3_read_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;write&quot;&gt;Write&lt;&#x2F;h2&gt;
+&lt;h4 id=&quot;fixed-length-2&quot;&gt;Fixed Length&lt;&#x2F;h4&gt;
+&lt;p&gt;TODO!:&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;truncated-1&quot;&gt;Truncated&lt;&#x2F;h4&gt;
+&lt;p&gt;TODO!:&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;unary-2&quot;&gt;Unary&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;unary_write_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;gamma-1&quot;&gt;Gamma&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;gamma_write_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;delta-1&quot;&gt;Delta&lt;&#x2F;h4&gt;
+&lt;p&gt;Since Delta has a gamma code inside, we can choose if the gamma code is write using a table or not.&lt;&#x2F;p&gt;
+&lt;p&gt;Without gamma table:
+&lt;img src=&quot;&#x2F;codes&#x2F;delta_write_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;
+With gamma table (TODO bits):
+&lt;img src=&quot;&#x2F;codes&#x2F;delta_gamma_write_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;zeta-3-1&quot;&gt;Zeta 3&lt;&#x2F;h4&gt;
+&lt;p&gt;&lt;img src=&quot;&#x2F;codes&#x2F;zeta3_write_tables.svg&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;h1 id=&quot;summary&quot;&gt;Summary&lt;&#x2F;h1&gt;
 &lt;table&gt;
 &lt;thead&gt;
-  &lt;tr&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;th&gt;Distribution&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;th&gt;Distribution&lt;&#x2F;th&gt;&lt;th&gt;Avg. Read (ns)&lt;&#x2F;th&gt;&lt;th&gt;Avg. Write (ns)&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;thead&gt;
 &lt;tbody&gt;
-  &lt;tr&gt;&lt;td&gt;Fixed Length&lt;&#x2F;td&gt;&lt;td&gt;Uniform were N is a power of two&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td&gt;Truncated&lt;&#x2F;td&gt;&lt;td&gt;Uniform&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td&gt;Unary&lt;&#x2F;td&gt;&lt;td&gt;Geometric with p = \\(\frac{1}{2}\\)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td&gt;Delta&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td&gt;Zeta k = 3&lt;&#x2F;td&gt;&lt;td&gt;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Fixed Length&lt;&#x2F;td&gt;&lt;td&gt;\(\frac{1}{|S|}\), Uniform were \(|S|\) is a power of two&lt;&#x2F;td&gt;&lt;td&gt;TODO&lt;&#x2F;td&gt;&lt;td&gt;TODO&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Truncated&lt;&#x2F;td&gt;&lt;td&gt;\(\frac{1}{|S|}\), Uniform&lt;&#x2F;td&gt;&lt;td&gt;TODO&lt;&#x2F;td&gt;&lt;td&gt;TODO&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Unary&lt;&#x2F;td&gt;&lt;td&gt;\((1 &#x2F; 2)^s\), Geometric with p = \(\frac{1}{2}\)&lt;&#x2F;td&gt;&lt;td&gt;1.58&lt;&#x2F;td&gt;&lt;td&gt;1.49&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;td&gt;Universal, \(\approx \frac{1}{2s^2}\), zipfian with \(\alpha = 2\)&lt;&#x2F;td&gt;&lt;td&gt;1.90&lt;&#x2F;td&gt;&lt;td&gt;1.59&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Delta&lt;&#x2F;td&gt;&lt;td&gt;Universal, \(\approx \frac{1}{2s(\log (s + 1))^2}\), zipfian with \(\alpha \approx 1\)&lt;&#x2F;td&gt;&lt;td&gt;3.11&lt;&#x2F;td&gt;&lt;td&gt;2.77&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+  &lt;tr&gt;&lt;td&gt;Zeta (k = 3)&lt;&#x2F;td&gt;&lt;td&gt;\(\approx \frac{1}{x^{1 + 1 &#x2F; k}}\), close to an arbitrary zipfian&lt;&#x2F;td&gt;&lt;td&gt;5.20&lt;&#x2F;td&gt;&lt;td&gt;3.76&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
 &lt;&#x2F;tbody&gt;
 &lt;&#x2F;table&gt;
-&lt;h1 id=&quot;bvgraph&quot;&gt;BVGraph&lt;&#x2F;h1&gt;
-&lt;p&gt;BVGraph is a graph compression data-structure which exploits some common 
-properties of real-world graphs. The basic idea is to use instantaneous codes 
-to represent an adjacency list (a.k.a. CSR).&lt;&#x2F;p&gt;
-&lt;p&gt;The BVGraph format has three core compression methods:&lt;&#x2F;p&gt;
+&lt;p&gt;From all the benchmarks we learn that for &lt;strong&gt;reads&lt;&#x2F;strong&gt;:&lt;&#x2F;p&gt;
 &lt;ul&gt;
-&lt;li&gt;A node can copy successors from a previous node&lt;&#x2F;li&gt;
-&lt;li&gt;Intervals of nodes with consecutive ids are written as the tuple (start, len)&lt;&#x2F;li&gt;
-&lt;li&gt;The remaning nodes are sorted and encoded as a sequence of gaps (differences between successive nodes).&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Unary&lt;&#x2F;strong&gt;: no table is needed.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Gamma&lt;&#x2F;strong&gt;: with or without table is pretty close, so we can not use a table to leave
+more cache space for the other codes.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Delta&lt;&#x2F;strong&gt;: It&#x27;s fastest with no table, but with gamma table enabled.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Zeta&lt;&#x2F;strong&gt;: It&#x27;s fastest with a 12-bit table.&lt;&#x2F;li&gt;
 &lt;&#x2F;ul&gt;
-&lt;p&gt;We can already notice that this compression depends from the node ids. 
-Finding the optimal order is most likely NP Complete, so later in this post we 
-will discuss some heuristic methods to find good orders.&lt;&#x2F;p&gt;
-&lt;h2 id=&quot;example-1&quot;&gt;Example&lt;&#x2F;h2&gt;
-&lt;p&gt;&lt;img src=&quot;&#x2F;webgraph_graph.svg&quot; alt=&quot;&quot; &#x2F;&gt;
-Let&#x27;s start by computing the neighbours of each node:&lt;&#x2F;p&gt;
-&lt;pre style=&quot;background-color:#0f1419;color:#bfbab0;&quot;&gt;&lt;code&gt;&lt;span&gt;0: 1,2
-&lt;&#x2F;span&gt;&lt;span&gt;1: 3
-&lt;&#x2F;span&gt;&lt;span&gt;2: 3
-&lt;&#x2F;span&gt;&lt;span&gt;3: 4,5,6
-&lt;&#x2F;span&gt;&lt;span&gt;4: 5,6,8
-&lt;&#x2F;span&gt;&lt;span&gt;5: 7
-&lt;&#x2F;span&gt;&lt;span&gt;6: 7
-&lt;&#x2F;span&gt;&lt;span&gt;7:
-&lt;&#x2F;span&gt;&lt;span&gt;8:
-&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
-&lt;p&gt;The bits properly identified &lt;&#x2F;p&gt;
-&lt;div&gt;
-&lt;span class=&quot;tag tag_degree&quot;&gt;011&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_reference_offset&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_nintervals&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_first_residual&quot;&gt;1010&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_residual_gap&quot;&gt;1010&lt;&#x2F;span&gt;
-&lt;&#x2F;div&gt;
-Reading the codes we obtain:
-&lt;div&gt;
-&lt;span class=&quot;tag tag_degree&quot;&gt;3&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_first_residual&quot;&gt;2&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_residual_gap&quot;&gt;2&lt;&#x2F;span&gt;
-&lt;&#x2F;div&gt;
-And after applying all the needed +1, -1 and nat -&gt; signed converstions, we have:
-&lt;div&gt;
-&lt;span class=&quot;tag tag_degree&quot;&gt;2&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_reference_offset&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_nintervals&quot;&gt;0&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_first_residual&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;tag tag_residual_gap&quot;&gt;2&lt;&#x2F;span&gt;
-&lt;&#x2F;div&gt;
-&lt;&#x2F;div&gt;
-&lt;p&gt;The default codes for BVGraph are:&lt;&#x2F;p&gt;
-&lt;table&gt;
-&lt;thead&gt;
-  &lt;tr&gt;&lt;th&gt;Value&lt;&#x2F;th&gt;&lt;th&gt;Code&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;
-&lt;&#x2F;thead&gt;
-&lt;tbody&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_degree&quot;&gt;Outdegree&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_reference_offset&quot;&gt;ReferenceOffset&lt;&#x2F;td&gt;&lt;td&gt;Unary&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_blocks_count&quot;&gt;BlockCount&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_blocks&quot;&gt;Blocks&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_nintervals&quot;&gt;IntervalCount&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_interval_start&quot;&gt;IntervalStart&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_interval_len&quot;&gt;IntervalLen&lt;&#x2F;td&gt;&lt;td&gt;Gamma&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_first_residual&quot;&gt;FirstResidual&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-  &lt;tr&gt;&lt;td class=&quot;tag tag_residual_gap&quot;&gt;ResidualGap&lt;&#x2F;td&gt;&lt;td&gt;Zeta(3)&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
-&lt;&#x2F;tbody&gt;
-&lt;&#x2F;table&gt;
-&lt;h2 id=&quot;compression-tradeoffs&quot;&gt;Compression tradeoffs&lt;&#x2F;h2&gt;
-&lt;p&gt;Compression windows, Reference chain length&lt;&#x2F;p&gt;
-&lt;h2 id=&quot;offsets-list&quot;&gt;Offsets list&lt;&#x2F;h2&gt;
-&lt;p&gt;To have have random-access on a BVGraph bitstream we need to store the bitoffsets
-at which each node codes start, analogously to the offsets list of a CSR matrix.&lt;&#x2F;p&gt;
-&lt;p&gt;While this could just be a vector of integers, we can notice that the offsets are
-a monotone non decreasing sequence of positive integers, thus they can be 
-represented using Elias-Fano!&lt;&#x2F;p&gt;
-&lt;p&gt;For a BVGraph bitstream of length (l) of a graph with (|V|) nodes, Elias-Fano stores the offsets using at most \(|V| (2 + \lfloor \log2 \frac{l}{|V|} \rfloor)\) bits while having \(O(1)\) access (select). &lt;&#x2F;p&gt;
-&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;zom.wtf&#x2F;posts&#x2F;elias_fano_pt1&quot;&gt;&lt;em&gt;See my other post for more info on Elias-Fano&lt;&#x2F;em&gt;&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
-&lt;h2 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
-&lt;h2 id=&quot;how-to-choose-the-best-codes&quot;&gt;How to choose the best codes?&lt;&#x2F;h2&gt;
-&lt;p&gt;Use universal codes, gamma is really fast so it&#x27;s a good default choice.
-Otherwise we can &amp;quot;simulate&amp;quot; writing every piece with all the codes, this requires
-just a complete iteration over the nodes so it&#x27;s feasible also on large graphs.&lt;&#x2F;p&gt;
-&lt;p&gt;Webgraph-rs allows has an optimized binary utility for this.&lt;&#x2F;p&gt;
-&lt;p&gt;In my practical application we don&#x27;t save much memory, about 3 GB over a 126GB graph,
-but we found out that zeta3 and delta have similar compressions, so we use delta which is 4 times faster than zeta3.&lt;&#x2F;p&gt;
-&lt;h1 id=&quot;computing-an-order&quot;&gt;Computing an order&lt;&#x2F;h1&gt;
-&lt;h2 id=&quot;bfs&quot;&gt;BFS&lt;&#x2F;h2&gt;
-&lt;h2 id=&quot;layered-labels-propagation&quot;&gt;Layered Labels Propagation&lt;&#x2F;h2&gt;
-&lt;h2 id=&quot;benchmarks-1&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
+&lt;p&gt;&lt;strong&gt;Gamma&lt;&#x2F;strong&gt; is fast and universal, so it&#x27;s a good
+default choice.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Writes&lt;&#x2F;strong&gt; are generally faster than &lt;strong&gt;Reads&lt;&#x2F;strong&gt;, and all codes gets fasters with 
+bigger tables.&lt;&#x2F;p&gt;
+&lt;p&gt;Specifically, for &lt;strong&gt;Writes&lt;&#x2F;strong&gt; is optimal to use:&lt;&#x2F;p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Unary&lt;&#x2F;strong&gt;: 3 bits table.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Gamma&lt;&#x2F;strong&gt;: 6 bits table.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Delta&lt;&#x2F;strong&gt;: 13 bits table, with gamma tables.&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;strong&gt;Zeta3&lt;&#x2F;strong&gt;: 15 bits table.&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;p&gt;&lt;strong&gt;LittleEndian&lt;&#x2F;strong&gt; is slightly faster than &lt;strong&gt;BigEndian&lt;&#x2F;strong&gt; when &lt;strong&gt;reading&lt;&#x2F;strong&gt; with no tables, but with tables they are close due to the better cache locality of Big Endian tables.
+&lt;strong&gt;Writes&lt;&#x2F;strong&gt; otherwise, are faster with &lt;strong&gt;BigEndian&lt;&#x2F;strong&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;strong&gt;Separated&lt;&#x2F;strong&gt; tables are faster than &lt;strong&gt;Combined&lt;&#x2F;strong&gt; tables when the table is bigger than the L1 cache (this cpu has 32KiB \(\approx 2^{15}\) L1D per core), and basically the same otherwise.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;em&gt;Benchmarks are useful :)&lt;&#x2F;em&gt;&lt;&#x2F;p&gt;
 &lt;h1 id=&quot;references&quot;&gt;References&lt;&#x2F;h1&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;algoweb&#x2F;WebGraph.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&quot;&gt;https:&#x2F;&#x2F;webgraph.di.unimi.it&#x2F;&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;dsi-bitstream-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;dsi-bitstream-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&quot;&gt;https:&#x2F;&#x2F;vigna.di.unimi.it&#x2F;ftp&#x2F;papers&#x2F;Codes.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&quot;&gt;https:&#x2F;&#x2F;www.ics.uci.edu&#x2F;~djp3&#x2F;classes&#x2F;2008_01_01_INF141&#x2F;Materials&#x2F;p595-boldi.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;webgraph-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&quot;&gt;https:&#x2F;&#x2F;github.com&#x2F;vigna&#x2F;sux-rs&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson3-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-1.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
-&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&quot;&gt;https:&#x2F;&#x2F;boldi.di.unimi.it&#x2F;Corsi&#x2F;AlgorithmsForLargeGraphs&#x2F;lesson4-2.pdf&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+</content>
+        
+    </entry>
+    <entry xml:lang="en">
+        <title>Optimizing HyperLogLog</title>
+        <published>2023-05-12T00:00:00+00:00</published>
+        <updated>2023-05-12T00:00:00+00:00</updated>
+        <author>
+          <name>Unknown</name>
+        </author>
+        <link rel="alternate" href="https://zom.wtf/posts/hyperloglog-opt/" type="text/html"/>
+        <id>https://zom.wtf/posts/hyperloglog-opt/</id>
+        
+        <content type="html">&lt;h1 id=&quot;hyperloglog&quot;&gt;HyperLogLog&lt;&#x2F;h1&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;HyperLogLog&quot;&gt;HyperLogLog counters&lt;&#x2F;a&gt; are a smart way to &lt;strong&gt;estimate&lt;&#x2F;strong&gt; the number of &lt;strong&gt;uniques&lt;&#x2F;strong&gt; 
+elements seen in a stream. They exploit the fact that the number (N) of leading 
+(or trailing) zeros (or ones), on a random number follows a geometric 
+distribution of parameter \(p = \frac{1}{2}\), i.e.:&lt;&#x2F;p&gt;
+&lt;p&gt;\[P(N = n) \propto \frac{1}{2^{n}}\]&lt;&#x2F;p&gt;
+&lt;p&gt;The jist of the HyperLogLog counters is to use an hash function on the values and 
+keep track of the maximum number of leading zeros. 
+To be more resiliant to outliers, multiple buckets are used.
+The first few bits are used to pick in which bucket each hashed value belongs to. 
+In order to compute the caradinality estimate, we take the &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Harmonic_mean&quot;&gt;&lt;strong&gt;harmonic mean&lt;&#x2F;strong&gt;&lt;&#x2F;a&gt;
+of the value of each bucket:&lt;&#x2F;p&gt;
+&lt;p&gt;\[|C| \approx \left( \sum_i \frac{1}{2^{x_i}} \right)^{-1}\]&lt;&#x2F;p&gt;
+&lt;p&gt;In this post I&#x27;ll explore the different implementations I experimented with
+to optimize this simple but fundamental operation.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;naive-implementation&quot;&gt;Naive implementation&lt;&#x2F;h3&gt;
+&lt;p&gt;This is the simplest way to compute it.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
+&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1.0 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&#x2F; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;2.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;powf&lt;&#x2F;span&gt;&lt;span&gt;(value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r14 &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r15&lt;&#x2F;span&gt;&lt;span&gt;],&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;    ; Load `value` from `values`
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vmovss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;dword ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rip &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;.TWO&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load 2.0
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;call   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r12&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;                           ; Call ldexpf -&amp;gt; xmm0 = 2.0^values
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vmovss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;dword ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rip &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;.ONE&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load 1.0
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vdivss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; 1.0 &#x2F; 2.0^value
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;vadds  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; total +=
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;avoiding-the-call-to-ldexpf&quot;&gt;Avoiding the call to ldexpf&lt;&#x2F;h3&gt;
+&lt;p&gt;Having a call in the function adds a lot of overhead so we can avoid it this way:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
+&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1.0 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&#x2F; &lt;&#x2F;span&gt;&lt;span&gt;((&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;&lt;&#x2F;span&gt;&lt;span&gt; value) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; Load `value` from `values`
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;mov   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;              ; 1
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;shlx  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;e8d&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;       ; 1 &amp;lt;&amp;lt; value ;  3 cycles
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vcvtsi2ss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm3&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; as f32     ;  8 cycles
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vdivss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; 1.0 &#x2F;      ; 18 cycles
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; total +=   ;  3 cycles
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;avoiding-divisions&quot;&gt;Avoiding Divisions&lt;&#x2F;h3&gt;
+&lt;p&gt;One way to avoid division is to pre-compute all the values and look them. Assuming that the table in in the L1 Cache we can avoid the division and the conversion to f32, trading 18 + 8 = 26 cycles for a memory read which is about 10 cycles.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
+&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;RECIPROCALS_TABLE&lt;&#x2F;span&gt;&lt;span&gt;[value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;usize&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;  ; Load `value` from `values`
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movd &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r12 &lt;&#x2F;span&gt;&lt;span&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;r8d&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; RECIPROCALS_TABLE ; ~10 cycles 
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss  &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm2&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; total +=          ;   3 cycles
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;ieee-754-tricks&quot;&gt;IEEE 754 tricks&lt;&#x2F;h3&gt;
+&lt;p&gt;The &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;IEEE_754&quot;&gt;IEEE 754 floats&lt;&#x2F;a&gt;, we use and love everyday, represents values as:
+&lt;img src=&quot;https:&#x2F;&#x2F;upload.wikimedia.org&#x2F;wikipedia&#x2F;commons&#x2F;thumb&#x2F;d&#x2F;d2&#x2F;Float_example.svg&#x2F;1024px-Float_example.svg.png&quot; alt=&quot;&quot; &#x2F;&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;where a value is decoded as:
+\[\text{value} = \text{sign}() \cdot (1 + \text{fraction}) \cdot 2^{\text{exponent} - 127}\]&lt;&#x2F;p&gt;
+&lt;p&gt;So with a bit of bit trickery we can directly build the value with just a sum and a shift:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; total&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0.0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
+&lt;&#x2F;span&gt;&lt;span&gt;    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; hack &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;127 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;    total &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;::&lt;&#x2F;span&gt;&lt;span&gt;from_ne_bytes(hack&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;to_ne_bytes&lt;&#x2F;span&gt;&lt;span&gt;())&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt; ; Load `value` from `values`
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;shl   &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;edx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;             ; &amp;lt;&amp;lt; 23         ; 1 cycle
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;add &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;ecx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1065353216&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;       ; + (127 &amp;lt;&amp;lt; 23) ; 1 cycle
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movd &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;ecx&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;            ; as f32        ; 3 cycles
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;vaddss &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm0&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;xmm1&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; total +=      ; 3 cycles
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h3 id=&quot;fixed-point-for-precision-and-profit&quot;&gt;Fixed point for precision and profit&lt;&#x2F;h3&gt;
+&lt;p&gt;If we assume that the values are less or equal than 32, we can use an u64 word as a &lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Fixed-point_arithmetic&quot;&gt;fixed point precision&lt;&#x2F;a&gt; value with 32 decimal bits.
+This allows us to compute the exact result with no loss of resolution and further speed up the code.&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;rust&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-rust &quot;&gt;&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let mut&lt;&#x2F;span&gt;&lt;span&gt; counter&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;0&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;for&lt;&#x2F;span&gt;&lt;span&gt; value &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;in&lt;&#x2F;span&gt;&lt;span&gt; values {
+&lt;&#x2F;span&gt;&lt;span&gt;    counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+= &lt;&#x2F;span&gt;&lt;span&gt;(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1_&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt;&lt;&#x2F;span&gt;&lt;span&gt; value&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;}
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; exp &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;=&lt;&#x2F;span&gt;&lt;span&gt; counter&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;leading_zeros&lt;&#x2F;span&gt;&lt;span&gt;() &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;1&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt;=&lt;&#x2F;span&gt;&lt;span&gt; exp&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span&gt;counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;gt;&amp;gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;64 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;- &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; res &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span&gt;(((&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;127 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;+ &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;32 &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;-&lt;&#x2F;span&gt;&lt;span&gt; exp) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;&amp;lt;&amp;lt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;23&lt;&#x2F;span&gt;&lt;span&gt;) &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;| &lt;&#x2F;span&gt;&lt;span&gt;(counter &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;as &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;u32&lt;&#x2F;span&gt;&lt;span&gt;)&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;let&lt;&#x2F;span&gt;&lt;span&gt; estimate &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;= &lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;f32&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;::&lt;&#x2F;span&gt;&lt;span&gt;from_ne_bytes(res&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29668;&quot;&gt;.&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;to_ne_bytes&lt;&#x2F;span&gt;&lt;span&gt;())&lt;&#x2F;span&gt;&lt;span style=&quot;color:#bfbab0cc;&quot;&gt;;
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The assembly inside the loop looks like this:&lt;&#x2F;p&gt;
+&lt;pre data-lang=&quot;asm&quot; style=&quot;background-color:#0f1419;color:#bfbab0;&quot; class=&quot;language-asm &quot;&gt;&lt;code class=&quot;language-asm&quot; data-lang=&quot;asm&quot;&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;movzx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;esi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f07178;&quot;&gt;byte ptr &lt;&#x2F;span&gt;&lt;span&gt;[&lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rax&lt;&#x2F;span&gt;&lt;span&gt;]&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;   ; Load `value` from `values`
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ffb454;&quot;&gt;shrx &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rcx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;          ; &amp;lt;&amp;lt;         ; 3 cycles
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#ff7733;&quot;&gt;add &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rdx&lt;&#x2F;span&gt;&lt;span&gt;, &lt;&#x2F;span&gt;&lt;span style=&quot;color:#f29718;&quot;&gt;rsi&lt;&#x2F;span&gt;&lt;span style=&quot;font-style:italic;color:#5c6773;&quot;&gt;                ; counter += ; 1 cycle
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;h2 id=&quot;benchmarks&quot;&gt;Benchmarks&lt;&#x2F;h2&gt;
+&lt;p&gt;Computing the sum of 10&#x27;000 elements (between 0 and 32) on my &lt;code&gt;Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz&lt;&#x2F;code&gt;&lt;&#x2F;p&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Impl&lt;&#x2F;th&gt;&lt;th&gt;ns &#x2F; element&lt;&#x2F;th&gt;&lt;th&gt;speedup&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;naive&lt;&#x2F;td&gt;&lt;td&gt;9.2354&lt;&#x2F;td&gt;&lt;td&gt;&#x2F;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;no call&lt;&#x2F;td&gt;&lt;td&gt;1.4025&lt;&#x2F;td&gt;&lt;td&gt;6.58&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;table&lt;&#x2F;td&gt;&lt;td&gt;1.1763&lt;&#x2F;td&gt;&lt;td&gt;7.85&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;IEE 754&lt;&#x2F;td&gt;&lt;td&gt;1.1586&lt;&#x2F;td&gt;&lt;td&gt;7.97&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;Fixed Point&lt;&#x2F;td&gt;&lt;td&gt;0.5693&lt;&#x2F;td&gt;&lt;td&gt;16.22&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;p&gt;And compiling with &lt;code&gt;RUSTFLAGS=&amp;quot;-C target-cpu=native&amp;quot;&lt;&#x2F;code&gt; we get:&lt;&#x2F;p&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Impl&lt;&#x2F;th&gt;&lt;th&gt;ns &#x2F; element&lt;&#x2F;th&gt;&lt;th&gt;speedup&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;naive&lt;&#x2F;td&gt;&lt;td&gt;8.3358&lt;&#x2F;td&gt;&lt;td&gt;&#x2F;&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;no call&lt;&#x2F;td&gt;&lt;td&gt;1.2977&lt;&#x2F;td&gt;&lt;td&gt;6.42&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;table&lt;&#x2F;td&gt;&lt;td&gt;1.1572&lt;&#x2F;td&gt;&lt;td&gt;7.20&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;IEE 754&lt;&#x2F;td&gt;&lt;td&gt;1.1303&lt;&#x2F;td&gt;&lt;td&gt;7.37&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;Fixed Point&lt;&#x2F;td&gt;&lt;td&gt;0.1351&lt;&#x2F;td&gt;&lt;td&gt;61.7&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;h2 id=&quot;reference&quot;&gt;Reference&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;gist.github.com&#x2F;zommiommy&#x2F;f6a42d8c7c59826f45aa1c0cef687c1a&quot;&gt;Code for benchmarks&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;godbolt.org&#x2F;#z:OYLghAFBqd5QCxAYwPYBMCmBRdBLAF1QCcAaPECAMzwBtMA7AQwFtMQByARg9KtQYEAysib0QXACx8BBAKoBnTAAUAHpwAMvAFYTStJg1DEArgoKkl9ZATwDKjdAGFUtEywYgAzADZSjgBk8BkwAOXcAI0xiEEkADlIAB1QFQjsGFzcPbz9k1NsBIJDwliiY%2BMtMawKGIQImYgJM909fSur0uoaCIrDI6NiE827m7Lbhxt6SssGASktUE2Jkdg4AUg0AQUSTCIBqKgY9gDcuCGOxE0wFED21gCYfNYBWACETOJeAEVm9gFo1l5sAcvPc7gB2V4bTZ7WF7egEPYsEyIoj1Wi3Kigu5eL57DQAOg0gKhWzhBxIJ0umD2wSpbmuENJMPJcLRYju9yhuL2XCJewA9Ht7kSAPpYkXJADuVAgACoLgy9kwFCD7rMSdDyWtwV8tWzUOjoTq9VtjVsdvtDid7udqTdOU83h9vr8AUC1Uz9bCEUiUXt2RjPYC8YTiV5meT%2BMR6VdaUdFVdVTrI6zYYHOdy8XyNIK9lAuDinICnHsFdTfiq1RqI96IaaWenDWJjbrzdtdgcE147QyHQ8ne9Ps8fv9AcCJV6yXDfcjUc2g5OQ&#x2F;iiZrp7Do7GaXTE4yU3XyRmHlm9gAlbBOACSylPAHknJsAkJRQAVTavALYF6vctKqtmPAAC9MG%2BNdG3rOtA1bBtoUtLsTkkXsk1uAdvxdEc3XHYNITrWd&#x2F;UDTFsWXMMwKjSld3jLdkxw9dWV9BAmGQABrHE8QgLh7nBTMywo&#x2F;9QV%2BEsS2FLxSLTAMF0zZcJRAEAqGIVAWFFEJRQiABPAhrggBjmIJIglMwFT1M02Ya1TWETUghdoPbODrWOZ4kOuFDHjQ4dR3dCciJo8C8MRNATEEAY9hMHxJFY&#x2F;FRI3cjqUo3dqLM1l&#x2F;MCmNj2XdjRRCsLBK8Ut%2BJxL8PV&#x2F;K5Iog2jfUwVREnCpKNOIAl6CYfAjFFYD5IUCABK5XkSpq6Ii2yvEKsSHrFmS&#x2F;Lx2XUL&#x2F;mEkrfWIPceSgdjOO47E&#x2F;j2IbK1VEw8uy0t7i8ATwVLCBepjPj1RK6TZPkxTlLUjT2vmhRdNQfTDMejqNTNNszS2NAGHMM8L2vO8HyfV930&#x2F;ZzBwlb5wtQt46xzUg60JZ5Udowl7gxtGCQ43GsaJHwccx8Cwy8AmyfJMMuGeEnCfJokNHBOIqbxjQNC8ABODQGepuEww0LhueeSnSY5znufBHx6YlonOY0eI4nuNn5aZxX7kkSQpD59WaeZ4X7nuFmufZ2ifHxrnnjphnMD%2BDRGfJLwiRt8FnlZgn7cdgXYT5Z4cbiVnebth2nbhcECRJ7meckMWvYdvw6xdtnJB8aXHjl55vaT2i%2BV58EvHiHxQTV7PE99vZuYJMWfHBSRKdCvXy5ZyvJAJGW4i8cE6ZVs2ce98FK5FLw4h1uIPe5rhhazwfK75EWTe51XReeFmy7nutngJbmfCV0LJHBd2eb5rxvYSOsRW5uINAO43R5l0XxfP%2BeCUkXmuC4HxP5jseZfpl%2BdZI5x0djfZ4u9l6j1Vt7bmlcXbghxvcXmSCx7fynpIGBr84gk1Cjbd%2BB0NCi3BJgus1dKaghxvXb%2BzxD4T3ttPNuUd6bf1VoXFmhcY70I0MPAkpcvB8wbrLUe6cS5cNfl&#x2F;HWYt7hcBVunIubMxFbwJH3GWe8p5FzrjrehXAeFTy5l3JW9NC7dyVto1%2BccbZTwDqrXwPgJ73DMUAgknFwEe2&#x2F;uPIujx6H3DgVHbu0s4g33BIQrgPcz5&#x2F;A4lgmR19uaSGtnHCestvGV2roQ9%2Bh9hZHyQarBxESvCMJofXQua9AmhVClweh%2BTL7OMLoXOuNCG53z5pU8RvhsFdyyV&#x2F;L%2BXMWlKLsQ3ce2CNA3xvrkqQPCx7SOCbE&#x2F;hcS4kVIidIZGb9pHDMKXTE2JtTGLMrpHaeNDOJeDccLTmYzw6whds8AOYS66BM5mvBZdNX5HxLvTLusTTlr3Lk8uscRlFs1ZjraWnMCZjNzuBdu2thnL0IRPTmOD6HgvJCKY2Ss05K2XmvchiLxHT3vrfNOONbbfKRXCbeVzP50w4uLD2Xd6FD2qUfK5Ht6a2xXlIelr8H5HyDkE1OcdiERIZRbHeo84gx15ifBB0CIkX1oi7NOsTFWWNrhy2Vzyi4IM1eAzuLN6FyvAn8uuvhQn%2BMCXEo59DYF1nbl4Npwy7Hc1iSbGRVqeFfzHkrIu78e5Szdcs4ZkhNmhK1hPNe2t&#x2F;VmhHCSDg8wMQcGeLwTwHAtCkFQJwU8ZhEQKEWMsGkDxKa8AIJoWN8wmIgBtjvZ4KstY0P4TfWJGN42SF4CwCQnNSDJtTemjgvAbjcOLSm2NpA4CwCQGgFgiQ6DRHIJQCdU76AxAYHgYACACC0FUqQLAxw8ArAAGp4EwFKW8iRGCcB4HwOgtUbgQAiCW0gERggNFUue3gj7mDEFUreCI2hMA2FfaQCdbBBC3gYBu%2B9WAWCGGAOIIdW68DzRsHgY4Tk4MVT&#x2F;SiVYF7ggaXjam2geAIjEGfS4LA96CDEDwG27gw6qAGGAAoA9R6T1npozIQQIgxDsHGfwQQigVDqDg7oHRBgjAgFMOYfQhGbiQHmKgRINQbgcD%2BKWeTBA&#x2F;j0BQ7QEMXh&#x2F;hOHqMQYAmB1PIB2CGBQTFVIGCYpgPtVQ&#x2F;01AcAwZwrgWjeHyYEYIfRSgDC1kPPIaQBCjFaPkgLNQpj9BiH59oDnOgGaaK5sY%2BSrCxYEF0SYXnpi%2BcPpYeLwX3O5e6BFnzUXD7zBzUsFYEg42cETZ2%2B9Pa9gSYIMgPYy7V3rtUvmXAhBKQFq4LMItJb5haRAIsAgOwLAUFOgpBd0RQisFWM11r7W10bt4JgfARBKPoD0Lx4QohxA8dkPxtQ97hOkClMRxIw39C1aTQ1zgt4USTb2KgKgTWs0rZXWtrrEAXCTunSlA6A2htDpMqQct8QiQ6yZXHdOItHZNs4C20gbbp7cK7bwHtfaQADuGzVjg9wHtwZx6QQdWgIcoeIKkewkggA%3D%3D%3D&quot;&gt;Code on Godbolt&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
 &lt;&#x2F;ul&gt;
 </content>
         

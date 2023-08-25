@@ -47,8 +47,12 @@
         <lastmod>2022-07-09</lastmod>
     </url>
     <url>
-        <loc>https://zom.wtf/posts/webgraph/</loc>
-        <lastmod>2023-04-19</lastmod>
+        <loc>https://zom.wtf/posts/webgraph-bvgraph/</loc>
+        <lastmod>2023-09-25</lastmod>
+    </url>
+    <url>
+        <loc>https://zom.wtf/posts/webgraph-codes/</loc>
+        <lastmod>2023-09-24</lastmod>
     </url>
     <url>
         <loc>https://zom.wtf/posts/writing-cuda-in-rust/</loc>

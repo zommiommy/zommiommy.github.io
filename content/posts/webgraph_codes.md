@@ -1,9 +1,10 @@
 +++
-title = "Webgraph from scratch (Draft)"
-description = "Long post on Webgraph, these are my notes about all topics related to WebGraph"
-date = 2023-04-19
+title = "Webgraph from scratch: Instantaneous Codes (Draft)"
+description = "Everything You Always Wanted to Know About Instantaneous Codes* (*But Were Afraid to Ask)"
+date = 2023-09-24
 +++
 # Introduction
+This post is a collection of notes I took and benchmarks I run while implementing and optimizing [dsi-bitstream-rs](https://github.com/vigna/dsi-bitstream-rs).
 
 # Theoretical preliminaries
 All bit sequences will be read from left to right, from top to bottom.
@@ -177,10 +178,7 @@ truncated binary encoding is always smaller or equal than the fixed length.
 ### Unary
 We can write any positive number \\(s \in \mathbb{N} \\) as a sequence of \\(s\\) zeros followed by a one, which act as a terminator.
 
-This code has length \\(s + 1\\) therefore, its intended distribution is:
-\\[p(x) = \left(\frac{1}{2}\right)^{x + 1}\\]  
-
-Thus, it's optimal for geometric distributions with \\(p = \frac{1}{2}\\).
+\\[s \to \overbrace{00...00}^\text{s} 1 = 0^s 1\\]
 
 <table>
 <thead>
@@ -199,9 +197,17 @@ Thus, it's optimal for geometric distributions with \\(p = \frac{1}{2}\\).
 </tbody>
 </table>
 
+This code has length \\(s + 1\\) therefore, its intended distribution is:
+\\[p(x) = \left(\frac{1}{2}\right)^{s + 1}\\]  
+
+Thus, it's optimal for the [geometric distribution](https://en.wikipedia.org/wiki/Geometric_distribution) with \\(p = \frac{1}{2}\\).
+
 Most modern CPUs architectures, like x86_64 and Aarch64 (Arm), have instructions
-to compute the leading or traling zeros in a registers. Using these we can decode
-unary codes in 1 ns on average. 
+to compute the leading or traling zeros in a registers. 
+
+x86_64 has [LZCNT](https://www.felixcloutier.com/x86/lzcnt) and [TZCNT](https://www.felixcloutier.com/x86/tzcnt) instructions, while Aarch64 has only [CLZ](https://developer.arm.com/documentation/dui0802/b/A32-and-T32-Instructions/CLZ).
+
+Using these we can decode unary codes in 1 ns on average. 
 
 ### [Elias-Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding#Further_reading)
 
@@ -226,10 +232,9 @@ Unary + Fixed Length
 
 ### [Elias-Delta](https://en.wikipedia.org/wiki/Elias_delta_coding)
 
-What happens if we write the fixed length part of gamma, using another gamma?
+What happens if we write the unary part of gamma, using another gamma?
 
-MEME: Oh boy here I go recursing again
-MEME: I heard you like gamma, so I put another gamma inside your gamma
+[![](https://imgs.xkcd.com/comics/functional.png)](https://xkcd.com/1270/)
 
 <table>
 <thead>
@@ -250,8 +255,8 @@ MEME: I heard you like gamma, so I put another gamma inside your gamma
 
 ### Golomb
 
-for a given b, write \\(\lfloor \sfrac{s}{b} \rfloor \\) in unary and 
-\\(s mod b\\) using fixed lenght (or truncated encoding)
+for a given b, write \\(\lfloor \frac{s}{b} \rfloor \\) in unary and 
+\\(s \mod b\\) using truncated encoding.
 
 The length is \\(|c(s)| = \left \lfloor \frac{s}{b} \right \rfloor + \lceil \log_2 b \rceil\\) thus, its 
 
@@ -307,6 +312,24 @@ def read_zeta(data, k):
     return l + r - 1, data
 ```
 
+<table>
+<thead>
+  <tr><th>Number</th><th>Zeta1</th><th>Zeta2</th><th>Zeta3</th><th>Zeta4</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>1</td><td>1 0</td><td>1 00</td><td>1 000</td></tr>
+  <tr><td>1</td><td>01 0</td><td>1 10</td><td>1 010</td><td>1 0010</td></tr>
+  <tr><td>2</td><td>01 1</td><td>1 11</td><td>1 011</td><td>1 0011</td></tr>
+  <tr><td>3</td><td>001 00</td><td>01 000</td><td>1 100</td><td>1 0100</td></tr>
+  <tr><td>4</td><td>001 01</td><td>01 001</td><td>1 101</td><td>1 0101</td></tr>
+  <tr><td>5</td><td>001 10</td><td>01 010</td><td>1 110</td><td>1 0110</td></tr>
+  <tr><td>6</td><td>001 11</td><td>01 011</td><td>1 111</td><td>1 0111</td></tr>
+  <tr><td>7</td><td>0001 000</td><td>01 1000</td><td>01 00000</td><td>1 1000</td></tr>
+</tbody>
+</table>
+
+*Note that Zeta1 == Gamma*
+
 ## Encoding of negative numbers
 All the discussed codes are defined over some subset of \\(\mathbb{N}\\), to 
 encode over \\(\mathbb{Z}\\), we have to define a bijection \\(\phi: \mathbb{Z} \to \mathbb{N}\\).
@@ -314,159 +337,260 @@ encode over \\(\mathbb{Z}\\), we have to define a bijection \\(\phi: \mathbb{Z} 
 If we can assume that the values form some kind of bell shape centered around zero,
 as we often do, it's best to map values with small absolute value to small integers, so it's natural to use the following bijection:
 
-\\[\phi(x) =  \left\\{\begin{matrix} -2 x & \text{if } x \le 0\\\\2 x - 1 & \text{otherwise}\end{matrix}\right.\\]
+\\[\phi(x) =  \left\\{\begin{matrix} 2 x & \text{if } x \ge 0\\\\- 2 x - 1 & \text{otherwise}\end{matrix}\right.\\]
 which has inverse:
-\\[\phi^{-1}(x) =  \left\\{\begin{matrix} -x / 2 & \text{if } x = 0 \mod 2\\\\ (x + 1) / 2 & \text{otherwise}\end{matrix}\right.\\]
+\\[\phi^{-1}(x) =  \left\\{\begin{matrix} x / 2 & \text{if } x = 0 \mod 2\\\\ -(x + 1) / 2 & \text{otherwise}\end{matrix}\right.\\]
+
+<table>
+<thead>
+  <tr><th>\(x \in \mathbb{N}\)</th><th>\(\phi^{-1}(x) \in \mathbb{Z}\)</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>0</td></tr>
+  <tr><td>1</td><td>-1</td></tr>
+  <tr><td>2</td><td>1</td></tr>
+  <tr><td>3</td><td>-2</td></tr>
+  <tr><td>4</td><td>2</td></tr>
+  <tr><td>5</td><td>-3</td></tr>
+  <tr><td>6</td><td>3</td></tr>
+</tbody>
+</table>
 
 this can be efficiently implemented as:
-```python
-def nat2int(x):
-    return (x >> 1) ^ ~((x & 1) - 1)
+```rust
+#[inline]
+pub const fn int2nat(x: i64) -> u64 {
+    (x << 1 ^ (x >> 63)) as u64
+}
 
-def int2nat(x):
-    if x > 0:
-        return x << 1
-    else:
-        return (x << 1) | 1
+#[inline]
+pub const fn nat2int(x: u64) -> i64 {
+    ((x >> 1) ^ !((x & 1).wrapping_sub(1))) as i64
+}
 ```
 
 which in x86_64 assembly should look like:
 
 ```asm
-; int2nat
-; rax = x
-shl rbx, rax, 1 ; x << 1 = 2 * x
-cmp rax
-adc rax
+int2nat:
+        sar     rdi, 63
+        xor     rax, rdi
 
-; nat2int
+nat2int:
+        and     edi, 1
+        shr     rax
+        neg     rdi
+        xor     rax, rdi
 ```
 
-## Codes Summary
+# Reading codes fast
+
+### Bitorder, Big or Little endian?
+We have to choose if for us the bit 0 of a byte is the Most Significant Bit (MSB) or the Least Significant Bit (LSB). Both have different pro and cons for performance, but the main difference is that MSB is the default in Java.
+
+### Buffering?
+
+In this section, we'll see the core ideas we had while implementing our rust crate for reading and wring bitstreams: [`dsi-bitstream-rs`](https://github.com/vigna/dsi-bitstream-rs).
+
+By definition, most codes we will read will take just a few bits so the idea is to have a buffer of 64 bits and read from it.
+This avoids having a memory access for each read, which is a common
+bottleneck. 
+
+If we don't allow reads over 32-bits, we can use a 64-bits buffer, so we know that there will always be space for the next read, and
+operations on 64-bits words are fast on most modern CPUS.
+
+```rust
+pub struct Reader<'a> {
+    /// The buffer of bits we will read from
+    buffer: u64,
+    /// how many bits are valid in the buffer
+    valid_bits: usize,
+    /// The data to read from
+    data: &'a [u32]
+}
+```
+
+Now we have two possible convention, we can either read the bits in a byte from the Most Significant Bit to the Least Significant Bit or viceversa.
+
+MSB to LSB implies that we will have to read the data using BigEndian order of bytes, while LSB to MSB implies LittleEndian order.
+
+It's not clear at priori which is the best choice, but we can easily implement both and benchmark them. In the following examples we will only discuss the Big Endian (MSB to LSB) version as is the default in the Java implementation of webgraph.
+
+
+Now let's implement a method for how to read the next `bits` bits from the buffer:
+
+```rust
+impl<'a> Reader<'a> {
+    pub fn read_bits(&mut self, bits: usize) -> u32 {
+        debug_assert!(bits <= 32);
+        // if there aren't enough bits
+        if self.valid_bits < bits {
+            // read a new word and add it tot he buffer
+            self.buffer |= (self.data[0] as u64) << self.valid_bits;
+            self.valid_bits += 32;
+            self.data = &self.data[1..];
+        }
+        // extract the lowest bits
+        let res = (self.buffer as u32) & ((1 << bits as u32) - 1);
+        self.buffer >>= self.valid_bits;
+        self.valid_bits -= bits;
+        res
+    }
+}
+```
+
+And now, how to read unary codes we can use rust's `leaing_zeros` which uses the `lzcnt` instruction on x86_64 and `clz` on Aarch64, if the feature is enables.
+Otherwise Rust will generate the broadword code for it.
+
+```rust
+impl<'a> Reader<'a> {
+    pub fn read_unary(&mut self) -> usize{
+        let zeros = self.buffer.leading_zeros();
+        // the unary code fits inside the valid bits
+        if zeros <= self.valid_bits {
+            self.buffer <<= zeros + 1;
+            self.valid_bits -= zeros + 1;
+            return zeros + 1
+        }
+        let mut res = zeros;
+        
+        // otherwise we have to read another word
+        self.buffer = self.data[0] << 32;
+        self.valid_bits += 32;
+        self.data = &self.data[1..];
+
+        let zeros = self.buffer.leading_zeros();
+        // our assumption is that all unary and bits are under 32 bits
+        // this is for simplicity, but it can be generalized
+        debug_assert!(zeros < 32); 
+        res += zeros;
+        self.valid_bits -= zeros + 1;
+        self.buffer <<= zeros + 1;
+        res
+    } 
+}
+```
+
+### How big should we make the tables?
+What's the optimal size for tables?
+
+### Merged or separated tables?
+Merged have better cache locality and a single memory access, but they are bigger than separated ones, due to
+padding.
+
+**The answer to all these questions is to benchmark!**
+
+# Benchmarks
+These benchmarks were run on a [**Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz**](https://en.wikichip.org/wiki/intel/core_i7/i7-8750h), the csv with the raw data can be found [here for reads](/codes/read.csv) and [here for writes](/codes/write.csv).
+
+To run these benchmarks on your own machine you can use the following command:
+```bash
+# Clone the repo
+git clone https://github.com/vigna/dsi-bitstream-rs.git
+cd dsi-bitstream-rs
+# Run the read benchmarks
+python3 ./python/bench_code_tables_read.py > read.csv
+# Make the plots
+cat read.csv | python3 ./python/plot_code_tables_read.py
+# Run the write benchmarks
+python3 ./python/bench_code_tables_write.py > write.csv
+# Make the plots
+cat write.csv | python3 ./python/plot_code_tables_write.py
+```
+
+## Read
+
+#### Fixed Length
+TODO!:
+
+#### Truncated
+TODO!:
+
+#### Unary
+![](/codes/unary_read_tables.svg)
+
+#### Gamma
+![](/codes/gamma_read_tables.svg)
+
+#### Delta
+Since Delta has a gamma code inside, we can choose if the gamma code is read using a table or not.
+
+Without gamma table:
+![](/codes/delta_read_tables.svg)
+With gamma table (8 bits):
+![](/codes/delta_gamma_read_tables.svg)
+
+#### Zeta 3
+![](/codes/zeta3_read_tables.svg)
+
+## Write
+
+#### Fixed Length
+TODO!:
+#### Truncated
+TODO!:
+
+#### Unary
+![](/codes/unary_write_tables.svg)
+
+#### Gamma
+![](/codes/gamma_write_tables.svg)
+
+#### Delta
+Since Delta has a gamma code inside, we can choose if the gamma code is write using a table or not.
+
+Without gamma table:
+![](/codes/delta_write_tables.svg)
+With gamma table (TODO bits):
+![](/codes/delta_gamma_write_tables.svg)
+
+#### Zeta 3
+![](/codes/zeta3_write_tables.svg)
+
+# Summary
 
 <table>
 <thead>
-  <tr><th>Code</th><th>Distribution</th></tr>
+  <tr><th>Code</th><th>Distribution</th><th>Avg. Read (ns)</th><th>Avg. Write (ns)</th></tr>
 </thead>
 <tbody>
-  <tr><td>Fixed Length</td><td>Uniform were N is a power of two</td></tr>
-  <tr><td>Truncated</td><td>Uniform</td></tr>
-  <tr><td>Unary</td><td>Geometric with p = \\(\frac{1}{2}\\)</td></tr>
-  <tr><td>Gamma</td><td></td></tr>
-  <tr><td>Delta</td><td></td></tr>
-  <tr><td>Zeta k = 3</td><td></td></tr>
+  <tr><td>Fixed Length</td><td>\(\frac{1}{|S|}\), Uniform were \(|S|\) is a power of two</td><td>TODO</td><td>TODO</td></tr>
+  <tr><td>Truncated</td><td>\(\frac{1}{|S|}\), Uniform</td><td>TODO</td><td>TODO</td></tr>
+  <tr><td>Unary</td><td>\((1 / 2)^s\), Geometric with p = \(\frac{1}{2}\)</td><td>1.58</td><td>1.49</td></tr>
+  <tr><td>Gamma</td><td>Universal, \(\approx \frac{1}{2s^2}\), zipfian with \(\alpha = 2\)</td><td>1.90</td><td>1.59</td></tr>
+  <tr><td>Delta</td><td>Universal, \(\approx \frac{1}{2s(\log (s + 1))^2}\), zipfian with \(\alpha \approx 1\)</td><td>3.11</td><td>2.77</td></tr>
+  <tr><td>Zeta (k = 3)</td><td>\(\approx \frac{1}{x^{1 + 1 / k}}\), close to an arbitrary zipfian</td><td>5.20</td><td>3.76</td></tr>
 </tbody>
 </table>
 
-# BVGraph
-BVGraph is a graph compression data-structure which exploits some common 
-properties of real-world graphs. The basic idea is to use instantaneous codes 
-to represent an adjacency list (a.k.a. CSR).
+From all the benchmarks we learn that for **reads**:
+- **Unary**: no table is needed.
+- **Gamma**: with or without table is pretty close, so we can not use a table to leave
+more cache space for the other codes.
+- **Delta**: It's fastest with no table, but with gamma table enabled.
+- **Zeta**: It's fastest with a 12-bit table.
 
-The BVGraph format has three core compression methods:
-- A node can copy successors from a previous node
-- Intervals of nodes with consecutive ids are written as the tuple (start, len)
-- The remaning nodes are sorted and encoded as a sequence of gaps (differences between successive nodes).
+**Gamma** is fast and universal, so it's a good
+default choice.
 
-We can already notice that this compression depends from the node ids. 
-Finding the optimal order is most likely NP Complete, so later in this post we 
-will discuss some heuristic methods to find good orders.  
+**Writes** are generally faster than **Reads**, and all codes gets fasters with 
+bigger tables.
 
-## Example
-![](/webgraph_graph.svg)
-Let's start by computing the neighbours of each node:
-```
-0: 1,2
-1: 3
-2: 3
-3: 4,5,6
-4: 5,6,8
-5: 7
-6: 7
-7:
-8:
-```
-The bits properly identified 
-<div>
-<span class="tag tag_degree">011</span><span class="tag tag_reference_offset">1</span><span class="tag tag_nintervals">1</span><span class="tag tag_first_residual">1010</span><span class="tag tag_residual_gap">1010</span>
-</div>
-Reading the codes we obtain:
-<div>
-<span class="tag tag_degree">3</span><span class="tag tag_reference_offset">0</span><span class="tag tag_nintervals">0</span><span class="tag tag_first_residual">2</span><span class="tag tag_residual_gap">2</span>
-</div>
-And after applying all the needed +1, -1 and nat -> signed converstions, we have:
-<div>
-<span class="tag tag_degree">2</span><span class="tag tag_reference_offset">0</span><span class="tag tag_nintervals">0</span><span class="tag tag_first_residual">1</span><span class="tag tag_residual_gap">2</span>
-</div>
-</div>
+Specifically, for **Writes** is optimal to use:
+- **Unary**: 3 bits table.
+- **Gamma**: 6 bits table.
+- **Delta**: 13 bits table, with gamma tables.
+- **Zeta3**: 15 bits table.
 
+**LittleEndian** is slightly faster than **BigEndian** when **reading** with no tables, but with tables they are close due to the better cache locality of Big Endian tables.
+**Writes** otherwise, are faster with **BigEndian**.
 
-The default codes for BVGraph are:
-<table>
-<thead>
-  <tr><th>Value</th><th>Code</th></tr>
-</thead>
-<tbody>
-  <tr><td class="tag tag_degree">Outdegree</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_reference_offset">ReferenceOffset</td><td>Unary</td></tr>
-  <tr><td class="tag tag_blocks_count">BlockCount</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_blocks">Blocks</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_nintervals">IntervalCount</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_interval_start">IntervalStart</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_interval_len">IntervalLen</td><td>Gamma</td></tr>
-  <tr><td class="tag tag_first_residual">FirstResidual</td><td>Zeta(3)</td></tr>
-  <tr><td class="tag tag_residual_gap">ResidualGap</td><td>Zeta(3)</td></tr>
-</tbody>
-</table>
+**Separated** tables are faster than **Combined** tables when the table is bigger than the L1 cache (this cpu has 32KiB \\(\approx 2^{15}\\) L1D per core), and basically the same otherwise.
 
-## Compression tradeoffs
-Compression windows, Reference chain length
+*Benchmarks are useful :)*
 
-
-
-## Offsets list
-To have have random-access on a BVGraph bitstream we need to store the bitoffsets
-at which each node codes start, analogously to the offsets list of a CSR matrix.
-
-While this could just be a vector of integers, we can notice that the offsets are
-a monotone non decreasing sequence of positive integers, thus they can be 
-represented using Elias-Fano!
-
-For a BVGraph bitstream of length \(l\) of a graph with \(|V|\) nodes, Elias-Fano stores the offsets using at most \\(|V| (2 + \lfloor \log2 \frac{l}{|V|} \rfloor)\\) bits while having \\(O(1)\\) access (select). 
-
-[*See my other post for more info on Elias-Fano*](https://zom.wtf/posts/elias_fano_pt1)
-
-## Benchmarks
-
-## How to choose the best codes?
-Use universal codes, gamma is really fast so it's a good default choice.
-Otherwise we can "simulate" writing every piece with all the codes, this requires
-just a complete iteration over the nodes so it's feasible also on large graphs.
-
-Webgraph-rs allows has an optimized binary utility for this.
-
-In my practical application we don't save much memory, about 3 GB over a 126GB graph,
-but we found out that zeta3 and delta have similar compressions, so we use delta which is 4 times faster than zeta3.
-
-# Computing an order
-
-## BFS
-
-## Layered Labels Propagation
-
-## Benchmarks
 
 # References
-- <https://vigna.di.unimi.it/algoweb/WebGraph.pdf>
-- <https://webgraph.di.unimi.it/>
+- <https://github.com/vigna/dsi-bitstream-rs>
 - <https://vigna.di.unimi.it/ftp/papers/Codes.pdf>
-- <https://www.ics.uci.edu/~djp3/classes/2008_01_01_INF141/Materials/p595-boldi.pdf>
-- <https://github.com/vigna/webgraph>
-- <https://github.com/vigna/webgraph-rs>
-- <https://github.com/vigna/sux-rs>
 - <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson1.pdf>
-- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson2.pdf>
-- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-1.pdf>
-- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson3-2.pdf>
-- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-1.pdf>
-- <https://boldi.di.unimi.it/Corsi/AlgorithmsForLargeGraphs/lesson4-2.pdf>
