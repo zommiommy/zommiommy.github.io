@@ -209,13 +209,44 @@ x86_64 has [LZCNT](https://www.felixcloutier.com/x86/lzcnt) and [TZCNT](https://
 
 Using these we can decode unary codes in 1 ns on average. 
 
+```rust
+fn read_unary(&mut self) -> u64 {
+    let value = self.peek_u64();
+    let result = value.leading_zeros(); // let rust do the magic
+    self.skip_bits(result + 1);
+    result
+}
+
+fn write_unary(&mut self, value: u64)  {
+    let bits = 1 << value;
+    let n_bits = value + 1;
+    self.write_bits(bits, n_bits);
+}
+```
+
 ### [Elias-Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding#Further_reading)
 
-Unary + Fixed Length
+The idea behind Elias-Gamma is to write a number \\(s\\) in binary using \\(l = \lceil \log_2 (s + 1) \rceil\\) bits and prefixing it with the length \\(l\\) in unary.
+
+Moreover, if we encode \\(s + 1\\) instead of \\(s\\), the fixed length will always
+have at least a 1,so we can save 1 bit by using
+the unary terminator 1 as the highest bit of the fixed length.
+
+So the final Elias-Gamma encodes a value \\(s \in \mathbb{N}\\) by writing \\(s + 1\\) in binary using \\(l = \lceil \log_2 (s + 1) \rceil\\) bits and prefixing it with the length \\(l\\) in unary.
+
+Or equivalently, it encodes a value \\(s \in \mathbb{N}\\) writing \\(\lfloor \log_2 (s + 1) \rfloor\\) in unary and then \\(s + 1 - 2^{\lceil \log_2 (s + 1) \rceil}\\) in binary, using \\(\lfloor \log_2 (s + 1) \rfloor\\) bits.
+
+\\[s \to \text{Unary}\left(\lfloor \log_2 (s + 1) \rfloor\right) \text{Binary}\left(s + 1 - 2^{\lceil \log_2 (s + 1) \rceil}\right)\\]
+
+Therefore, the length of the gamma code for \\(s\\) is \\(1 + 2\lfloor \log_2 (s + 1) \rfloor\\).
+
+Finally, it's intended distribution is:
+
+\\[p(s) \propto 2^{-1-2\lfloor \log_2 (s + 1) \rfloor} \approx \frac{1}{2(s + 1)^2}\\]
 
 <table>
 <thead>
-  <tr><th>Number</th><th>Code</th></tr>
+  <tr><th>Number</th><th>Gamma Code</th></tr>
 </thead>
 <tbody>
   <tr><td>0</td><td>1</td></tr>
@@ -230,11 +261,36 @@ Unary + Fixed Length
 </tbody>
 </table>
 
+While the math is a bit complicated, the code is really simple to implement:
+
+```rust
+fn read_gamma(&mut self) -> u64 {
+    let len = self.read_unary();
+    Ok(self.read_bits(len as usize) + (1 << len) - 1)
+}
+
+fn write_gamma(&mut self, mut value: u64)  {
+    value += 1;
+    let number_of_bits_to_write = value.ilog2(); // floor(log2(value))
+    let short_value = value - (1 << number_of_bits_to_write);
+    self.write_unary(number_of_bits_to_write);
+    self.write_bits(short_value, number_of_bits_to_write);
+}
+```
+
 ### [Elias-Delta](https://en.wikipedia.org/wiki/Elias_delta_coding)
 
-What happens if we write the unary part of gamma, using another gamma?
+Elias-Delta just writes the legth of the gamma code in gamma code and then the value in binary.
 
 [![](https://imgs.xkcd.com/comics/functional.png)](https://xkcd.com/1270/)
+
+\\[s \to \text{Gamma}\left(\lfloor \log_2 (s + 1) \rfloor\right) \text{Binary}\left(s + 1 - 2^{\lceil \log_2 (s + 1) \rceil}\right)\\]
+
+Therefore, its length is \\(1 + 2\lfloor \log_2 \log_2 (s + 1) \rfloor + \lfloor \log (s + 1) \rfloor\\).
+
+Finally, it's intended distribution is:
+
+\\[p(s) \propto 2^{-1 + 2\lfloor \log_2 \log_2 (s + 1) \rfloor + \lfloor \log (s + 1) \rfloor} \approx \\frac{1}{2(s + 1) (\log_2(s + 1))^2}\\]
 
 <table>
 <thead>
@@ -253,6 +309,23 @@ What happens if we write the unary part of gamma, using another gamma?
 </tbody>
 </table>
 
+While the math is a bit complicated, the code is really simple to implement:
+
+```rust
+fn read_delta(&mut self) -> u64 {
+    let len = self.read_gamma();
+    Ok(self.read_bits(len as usize) + (1 << len) - 1)
+}
+
+fn write_delta(&mut self, mut value: u64)  {
+    value += 1;
+    let number_of_bits_to_write = value.ilog2(); // floor(log2(value))
+    let short_value = value - (1 << number_of_bits_to_write);
+    self.write_gamma(number_of_bits_to_write);
+    self.write_bits(short_value, number_of_bits_to_write);
+}
+```
+
 ### Golomb
 
 for a given b, write \\(\lfloor \frac{s}{b} \rfloor \\) in unary and 
@@ -263,6 +336,21 @@ The length is \\(|c(s)| = \left \lfloor \frac{s}{b} \right \rfloor + \lceil \log
 For a Geometric distribution of ratio \\(p\\) we can compute the \\(b\\) so that
 the Golomb code is optimal:
 \\[b = \left \lceil \frac{\log_2 (2 - p)}{-\log(1 - p)} \right \rceil\\]
+
+```rust
+fn read_golomb(&mut self, b: u64) -> u64 {
+    let slot = self.read_unary();
+    let rem = self.read_truncated_binary(b);
+    Ok(slot * b + rem)
+}
+
+fn write_golomb(&mut self, mut value: u64, b: u64)  {
+    let slot = value / b; 
+    let rem = value % b;
+    self.write_unary(slot);
+    self.write_truncated_binary(rem, b);
+}
+```
 
 ### VBytes
 
@@ -383,6 +471,8 @@ nat2int:
         xor     rax, rdi
 ```
 
+This is also called [zigzag encoding](https://en.wikipedia.org/wiki/Variable-length_quantity#Zigzag_encoding/) ([another reference](https://lemire.me/blog/2022/11/25/making-all-your-integers-positive-with-zigzag-encoding)).
+
 # Reading codes fast
 
 ### Bitorder, Big or Little endian?
@@ -470,6 +560,14 @@ impl<'a> Reader<'a> {
     } 
 }
 ```
+### How big should the buffer be?
+The bigger the buffer, the less memory accesses we will have, but we want the 
+buffer to fit a single register, so we can do fast operations on it.
+
+In our benchmarks we see that from u8 to u64 the speed increase is linear, but
+u128 is slower than u64.
+
+We use an u64 buffer, because u128 are not as efficient on most CPUs, expecially with `LZCNT`. Moreover, Rust/LLVM generates suboptimal code for it.
 
 ### How big should we make the tables?
 What's the optimal size for tables?
@@ -584,6 +682,9 @@ Specifically, for **Writes** is optimal to use:
 
 **LittleEndian** is slightly faster than **BigEndian** when **reading** with no tables, but with tables they are close due to the better cache locality of Big Endian tables.
 **Writes** otherwise, are faster with **BigEndian**.
+
+Generally, **BigEndian** seems the better choiche, as they `LZCNT` is supported
+on more CPUs than `TZCNT`.
 
 **Separated** tables are faster than **Combined** tables when the table is bigger than the L1 cache (this cpu has 32KiB \\(\approx 2^{15}\\) L1D per core), and basically the same otherwise.
 
