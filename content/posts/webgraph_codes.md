@@ -294,7 +294,7 @@ Finally, it's intended distribution is:
 
 <table>
 <thead>
-  <tr><th>Number</th><th>Code</th></tr>
+  <tr><th>Number</th><th>Delta Code</th></tr>
 </thead>
 <tbody>
   <tr><td>0</td><td>1</td></tr>
@@ -353,51 +353,98 @@ fn write_golomb(&mut self, mut value: u64, b: u64)  {
 ```
 
 ### VBytes
+This code, in its variation [`LEB128`](https://en.wikipedia.org/wiki/LEB128) is really common as it's present in both
+[DWARF](https://en.wikipedia.org/wiki/DWARF) format and [Webassembly](https://en.wikipedia.org/wiki/WebAssembly) binary format.
 
-This code, in its variation LEB128 is really common as it's present in both
-DWARF format and Webassembly binary format.
+This code is Byte-aligned, and the core idea is to use the highest bit of every byte as a continuation bit. 
+We wirite 7 bits and use the highest to set 0 if continue 1 if stop.
 
-Byte-aligned 
+A faster variant is to have all the 0s at the start, so we write the number of bytes - 1 in unary at the start and then we can read all the bits contiguously. This avoids the need to iterate over the bytes to check the continuation bit as we can compute it at once with a single `LZCNT`.
 
-write 7 bits and use the highest to set 0 if continue 1 if stop.
+`LEB128` is not complete as it has infinite encodings for each number as we can just add 0 padding on the top. 
 
-The faster variation is to have all the 0s at the start, so basically writing the number of bytes - 1 in unary at the start.
+```
+0b1000_0000 = 0
+0b0000_0000 0b1000_0000 = 0
+0b0000_0000 0b0000_0000 0b1000_0000 = 0
+0b0000_0000 0b0000_0000 0b0000_0000 0b1000_0000 = 0
+```
 
-LEB128 is not complete and redundant as it has infinite encodings for each number
-as we can just add 0 padding on the top. Moreover, if a value uses 2 bytes we know that it must be bigger than 127, so we can subtract it to fit more values, and this
-can be done recursively.
+Moreover, if a value uses 2 bytes we know that it must be bigger than 127, so we can subtract it to fit more values, and this
+can be done recursively to make the code complete.
+
+So our final code looks like:
+
+\\[s \to \text{Unary}(\lceil \frac{s}{7} \rceil) - 1 \text{Binary}(\text{value} = s - \text{max}, \text{bits} = 7 *\lceil \frac{s}{7} \rceil)\\]
+
+<table>
+<thead>
+  <tr><th>Number</th><th>VBytes code</th></tr>
+</thead>
+<tbody>
+  <tr><td>0</td><td>0b1000_0000 = 127</td></tr>
+  <tr><td>1</td><td>0b1000_0001 = 128</td></tr>
+  <tr><td>2</td><td>0b1000_0010 = 129</td></tr>
+  <tr><td>...</td><td>...</td></tr>
+  <tr><td>127</td><td>0b1111_1111 = 255</td></tr>
+  <tr><td>128</td><td>0b0100_0000 0b0000_0000 = 64 0</td></tr>
+  <tr><td>129</td><td>0b0100_0000 0b0000_0001 = 64 1</td></tr>
+  <tr><td>130</td><td>0b0100_0000 0b0000_0010 = 64 2</td></tr>
+  <tr><td>...</td><td>...</td></tr>
+  <tr><td>65662</td><td>0b0111_1111 0b1111_1111 = 127 255</td></tr>
+  <tr><td>65663</td><td>0b0010_0000 0b0000_0000 0b0000_0000 = 32 0 0</td></tr>
+</tbody>
+</table>
+
+Example implementation:
+```rust
+fn read_vbytes(&mut self) -> u64 {
+    let len = self.read_unary() + 1;
+    let mut value = self.read_bits(len as usize * 7);
+    let mut max = 1 << 7;
+    for _ in 1..len {
+        value += max;
+        max <<= 7;
+    }
+    value
+}
+
+fn write_vbytes(&mut self, mut value: u64) {
+    let mut max = 1 << 7;
+    let mut len = 0;
+    while value > max {
+        value -= max;
+        max <<= 7;
+        len += 1;
+    }
+    self.write_unary(len);
+    self.write_bits(value, len * 7);
+}
+```
+**This implementation is not optimal, unrolling the while into a series of ifs will make it faster. Moreover, everything is byte aligned so reading unary and bits is overkill. For a proper implementation see [here](https://github.com/vigna/sux-rs/blob/e7c965c4bf6d79998d923c05922b2d231a55b608/src/rear_coded_list.rs#L498).** 
+
 
 ### [Zeta](https://vigna.di.unimi.it/ftp/papers/Codes.pdf)
 
-Unary + Truncated Encoding
+TODO!: Unary + Truncated Encoding
 
-```python
-from math import floor, ceil, log2
+```rust
+fn read_zeta(&mut self, k: u64) -> u64 {
+    let h = self.read_unary();
+    let u = 1 << ((h + 1) * k);
+    let l = 1 << (h * k);
+    let res = backend.read_minimal_binary(u - l);
+    Ok(l + res - 1)
+}
 
-def write_zeta(value, k):
-    value += 1
-    h = int(floor(log2(value)) / k)
-    u = 2**((h + 1) * k)
-    l = 2**(h * k)
-
-    data  = write_unary(h)
-    data += write_minimal_binary(value - l, max=u - l)
-    return data
-
-def len_zeta(value, k):
-    value += 1
-    h = int(floor(log2(value)) / k)
-    u = 2**((h + 1) * k)
-    l = 2**(h * k)
-    return len_unary(h) + len_minimal_binary(value - l, max=u - l)
-
-
-def read_zeta(data, k):
-    h, data = read_unary(data)
-    u = 2**((h + 1) * k)
-    l = 2**(h * k)
-    r, data = read_minimal_binary(data, max=u - l)
-    return l + r - 1, data
+fn write_zeta(&mut self, k: u64, value: u64) {
+    value += 1;
+    let h = value.ilog2() as u64 / k;
+    let u = 1 << ((h + 1) * k);
+    let l = 1 << (h * k);
+    self.write_unary(h);
+    self.write_minimal_binary(value - l, u - l);
+}
 ```
 
 <table>
@@ -474,17 +521,97 @@ nat2int:
 This is also called [zigzag encoding](https://en.wikipedia.org/wiki/Variable-length_quantity#Zigzag_encoding/) ([another reference](https://lemire.me/blog/2022/11/25/making-all-your-integers-positive-with-zigzag-encoding)).
 
 # Reading codes fast
-
-### Bitorder, Big or Little endian?
-We have to choose if for us the bit 0 of a byte is the Most Significant Bit (MSB) or the Least Significant Bit (LSB). Both have different pro and cons for performance, but the main difference is that MSB is the default in Java.
+In this section, we'll see the core ideas we had while implementing our rust crate for reading and wring bitstreams: [`dsi-bitstream-rs`](https://github.com/vigna/dsi-bitstream-rs).
 
 ### Buffering?
-
-In this section, we'll see the core ideas we had while implementing our rust crate for reading and wring bitstreams: [`dsi-bitstream-rs`](https://github.com/vigna/dsi-bitstream-rs).
+Should we read the bitstream every time we need to decode or should we have a local buffer?
 
 By definition, most codes we will read will take just a few bits so the idea is to have a buffer of 64 bits and read from it.
 This avoids having a memory access for each read, which is a common
 bottleneck. 
+
+But buffering needs more logic, and buffering is useful only if the buffer
+is kept in a register, if it's spilled to the stack, we will still need a memory access.
+
+### Bitorder, Big or Little endian?
+Now we have two possible convention, we can either read the bits in a byte from the Most Significant Bit to the Least Significant Bit or viceversa.
+
+It's not clear at priori which is the best choice, but we can easily implement both and benchmark them. In the following examples we will only discuss the Big Endian (MSB to LSB) version as is the default in the Java implementation of webgraph.
+
+The MSB vs LSB orders are given a byte:
+```
+     M       L
+     0000_0000
+MSB: 0123 4567
+LSB: 7654 3210
+```
+
+Note that for the `MSB` order, we will have to read bytes in Big endian order, thus we also call it `BE` order, while for `LSB` order we will have to read bytes in Little endian order, this `LE` order.
+
+A simple example is the table for unary codes, for LE, every other value will be 0 (all odds indices), as the values are "interleaved", while for BE, the 0s are at the start. Therefore, LE will use twice as much L1 Cache to store the 0s 
+(which are the most frequently accessed).
+
+```rust
+const LE_TABLE: &[u16] = &[
+    u16::MAX,
+    0,
+    1,
+    0,
+    2,
+    0,
+    1,
+    0,
+    ...
+];
+
+const BE_TABLE: &[u16] = &[
+    u16::MAX,
+    15,
+    14,
+    14,
+    13,
+    13,
+    13,
+    13,
+    ...
+];
+```
+
+### How big should the buffer be?
+We can choose a buffer size that fits in a register, so: 8, 16, 32 or 64 bits and 128, 256, 512 bits with `SSE`, `AVX`, `AVX512` extensions.
+
+#### 512 bits buffer?
+If we want to optimize memory throughtput, we can use a 64-bytes buffer, as it's the size of a cache line on most modern CPUs, so we will have a single memory access every 64-bytes. 
+
+However, to hadnle 64-bytes values we will need `AVX512` instructions which are not available on all CPUs and are not as 
+.
+
+`AVX512` has an extension `AVX512 CD` that has an `LZCNT` equivalent [`_mm512_lzcnt_epi64`](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm512_lzcnt_epi64&ig_expand=4226,4230,4230,4226) which compute the number of leading zeros in a 64-bits every word inside the 512 register.
+`_mm512_lzcnt_epi64` takes `4 cycles` to execute, while [`_lzcnt_u64`](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_lzcnt_u64&ig_expand=4226,4230,4230) takes `3 cycles` to execute.
+Moreover, to get the total number of leading zeros, we have to do a masked horizontal sum of the 8 64-bits words, which takes even more cycles.
+
+Finally, to put the read 256 bits inside the 512 register we can't use an `alignr` instruction, but we should permute the values twice, do the `alignr` and finally merge them wiht a xor.
+
+Therefore, while bechmarks would be useful, we can assume that a 64-bytes buffer will not be optimal. 
+
+#### 256 bits buffer?
+256 registers have the same problems of 512 registers, but they are more common and they have `AVX2`, but they still need `AVX512` for `LZCNT`.
+
+#### 128 bits buffer?
+These buffers are basically supported everywhere, and we have a good shifting instruction [`_mm_srli_epi16`](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=srl&ig_expand=280,289,6483&techs=SSE_ALL) that takes 1 cycle to execute but we don't have a `LZCNT` (expect from `AVX512` extensions), so we would have to resort to either broadword programming, or split the 128 bits in 2 64-bits registers and use `LZCNT` on them.
+
+This could be explored but it doesn't seems to be promising as we will do many more `LZCNT` than fills from memory.
+
+#### 64 bits buffer?
+This is the biggest buffer that fits in a "common" register, so we can use the `lzcnt` instruction on x86_64 and `clz` on Aarch64.
+
+In our benchmarks we see that from `u8` to `u64` the speed increase is linear, but `u128` is slower than `u64`.
+
+*Note: The u128 implementation uses rust primitve types which do not use SSE instructions, so it's suboptimal.*
+
+**Therefore, we are going to use `u64` buffers.**
+
+### Buffering details
 
 If we don't allow reads over 32-bits, we can use a 64-bits buffer, so we know that there will always be space for the next read, and
 operations on 64-bits words are fast on most modern CPUS.
@@ -499,13 +626,6 @@ pub struct Reader<'a> {
     data: &'a [u32]
 }
 ```
-
-Now we have two possible convention, we can either read the bits in a byte from the Most Significant Bit to the Least Significant Bit or viceversa.
-
-MSB to LSB implies that we will have to read the data using BigEndian order of bytes, while LSB to MSB implies LittleEndian order.
-
-It's not clear at priori which is the best choice, but we can easily implement both and benchmark them. In the following examples we will only discuss the Big Endian (MSB to LSB) version as is the default in the Java implementation of webgraph.
-
 
 Now let's implement a method for how to read the next `bits` bits from the buffer:
 
@@ -560,25 +680,65 @@ impl<'a> Reader<'a> {
     } 
 }
 ```
-### How big should the buffer be?
-The bigger the buffer, the less memory accesses we will have, but we want the 
-buffer to fit a single register, so we can do fast operations on it.
+### Should we use tables?
 
-In our benchmarks we see that from u8 to u64 the speed increase is linear, but
-u128 is slower than u64.
+We can use tables to speed up the decoding of codes, we can just `peek` (read without seeking forward) the first x bits, and then use a table to decode them.
 
-We use an u64 buffer, because u128 are not as efficient on most CPUs, expecially with `LZCNT`. Moreover, Rust/LLVM generates suboptimal code for it.
+```rust
+fn read_gamma() {
+    let value = self.peek_u16();
+    let len = GAMMA_LEN_TABLE[value as usize];
+    // if the length is not u16::MAX, we can use the table
+    if len != u16::MAX {
+        self.skip_bits(len as usize);
+        return GAMMA_VALUE_TABLE[value as usize];
+    }
+    // otherwise normally decode
+    let len = self.read_unary();
+    Ok(self.read_bits(len as usize) + (1 << len) - 1)
+}
+```
+
+This might speed up the more complex codes, but it introduces a branch, and generally more logic which might be expensive.
+
+**So we need benchmarks to see when it's worth it.**
 
 ### How big should we make the tables?
-What's the optimal size for tables?
+Since all our codes are from skewed distributions, the most common values will be encoded with the shortest codes, so we the most impactful values to store are the shortest codes.
+
+Bigger tables might avoid some computation, but we will use more Cache which might hurt the performance of other codes. Moreover, if the table entry is not in cache, accessing the table might be slower than computing the code.
+
+**The only way to know is to benchmark.**
 
 ### Merged or separated tables?
-Merged have better cache locality and a single memory access, but they are bigger than separated ones, due to
-padding.
+In the table/s we have to store the decoded value and the length of the code.
+Therefore, we can choose whether to store them in a single table or in two separated tables.
+```rust
+// Merged
+const MERGED_TABLE: &[(u16, u8)] = &[...];
+// Separated
+const LEN_TABLE: &[u8] = &[...];
+const VALUE_TABLE: &[u16] = &[...];
+```
+Merged have better cache locality and a single memory access but they are bigger than separated ones, due to
+padding because `(u16, u8)` is actually stored as 4 bytes as `(u16, u8, u8)` where the last byte is not used.
+
+Separated tables have two memory accesses but uses 3/4 of the memory of merged tables.
+If we assume that both tables entries are in cache, then the second access will cost 0 cycles as both accesses will be executed in parallel.
+
+[![](https://en.wikichip.org/w/images/7/7e/skylake_block_diagram.svg)](https://en.wikichip.org/wiki/intel/microarchitectures/skylake_(client))
+
+During [Out of Order Execution](https://en.wikipedia.org/wiki/Out-of-order_execution), since the loads are independent both will wait in the LoadBuffer.
+As we can see on "relatively modern cpus as the skylake microarchitecture, we can have up to 72 in-flight loads and the throughput from the L1 Data cache is
+32 bytes / cycle, so we can easily fit ~3 bytes we need in a single cycle.
+
+Therefore, **my hypotesis is that separated tables will perform as good as the merged ones,
+but will work better with bigger tables as they are smaller**.
+
+# Benchmarks
 
 **The answer to all these questions is to benchmark!**
 
-# Benchmarks
 These benchmarks were run on a [**Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz**](https://en.wikichip.org/wiki/intel/core_i7/i7-8750h), the csv with the raw data can be found [here for reads](/codes/read.csv) and [here for writes](/codes/write.csv).
 
 To run these benchmarks on your own machine you can use the following command:
